@@ -12,7 +12,7 @@ execute:
   message: false
 ---
 
-# Modul 7.0 Architectural Overview Generate a publication-ready Graphviz Dot Diagram
+# Modul 7.0 Architectural Overview - Generates a publication-ready Graphviz Dot Diagram
 
 ```{r}
 
@@ -67,7 +67,11 @@ digraph G {
 
 print(modul7_tree)
 ```
+
+# Saves MODUL 7.0 diagram as PNG
+
 ```{r}
+
 # Save MODUL 7.0 diagram as PNG
 
 library(rsvg)
@@ -93,9 +97,11 @@ cat(
   "../measure_outputs/modul_7_architecture.png\n"
 )
 ```
-# # MODUL 7.1 — Initialize the PMI workflow
+
+# \# MODUL 7.1 — Initialize the PMI workflow
 
 ```{r}
+
 # MODUL 7.1 — Initialize the PMI workflow
 
 library(dplyr)
@@ -137,22 +143,22 @@ cat(
 
 ```
 
-# Note: 
+# Note:
 
 # MODUL 7.2 — Analytical scope
 
-MODUL 7 evaluates the corpus-based statistical plausibility of approved (present in corpus) multiword combinations extracted from the Human, ChatGPT, and Claude texts. `BASIC_GEMINI_NATIVE_001` is excluded because its Markdown contamination produced systematically unreliable token, POS, and dependency annotation.
+MODUL 7 evaluates the corpus-based statistical (distributional) plausibility of approved (present in corpus) multiword combinations/sequences extracted from the Human, ChatGPT, and Claude texts. `BASIC_GEMINI_NATIVE_001` is excluded because its Markdown contamination produced systematically unreliable token, POS, and dependency annotation. The aim was to gain insight into the overall MI (PMI) structure of each target text. 
 
-The x2a family represents parser-restricted functor-based frames that have root status. `x2a1_nominal` pairs the verbal functor with an approved preverbal nominal candidate, while `x2a2_predicative` pairs it with a parser-identified nominal object. The x2b and x2c families represent exact ordered two- or three-token lemma sequences. Titles and subheadings are excluded.
+The application of the "functor" (unsaturated elements, that license semantic slots and call for their closure, as the conceptualized middle of a functor-argument relations is taken from Reinöhl & Ellison 2024 (795,797,800) (Reinöhl, Uta, and T. Mark Ellison. 2024. “Metaphor Forces Argument Overtness.” Linguistics 62(4): 795–847. https://doi.org/10.1515/ling-2021-0072). 
 
-PMI is obtained from the fixed DeReKo reference corpus. Lemma-based queries group inflectional variants and therefore assess the corpus association of the lemma combination rather than the plausibility of the exact inflectional realization found in the target text.
+The x2a indices bundle represents parser-restricted functor-formulated frames that have root status. `x2a1_nominal` pairs the verbal functor with an approved preverbal nominal candidate, while `x2a2_predicative` pairs it with a parser-identified nominal object. The x2b and x2c  indices bundles represent exact ordered two- or three-token lemma sequences - that are motivated by the sentence lengths and sstructure (type of connector). Titles and subheadings are excluded.
 
-In MODUL 7, the distributional plausibility of the word combinations occurring in the three target texts is examined on the basis of a human-authored reference corpus. (BASIC_GEMINI_NATIVE_001 is excluded from MODUL 7 because Markdown-related contamination produced systematically unreliable token, POS, and dependency annotation. Gemini is retained only in the exclusion audit and does not enter candidate extraction, corpus querying, PMI calculation, aggregation, or final reporting.) For this purpose, all candidates are first preserved with their token and lemma forms as well as their unambiguous assignment to text_id, sentence, and original token position. In simple main clauses and in the respective root area of more complex sentences, the areas pre_f = nominal candidates, functor = VERB, and post_f = predicative candidates are distinguished for x2a1 and x2a2: In the sentence “Menschen entwickeln neue Fähigkeiten,” for example, Menschen ↔ entwickeln can be examined as a connection between pre_f = nominal candidates and functor, and entwickeln ↔ Fähigkeiten as a connection between functor and post_f = predicative candidates. Subordinate clauses and coordinated continuations, by contrast, are not analysed again through this functor logic, but are divided from a recognized SCONJ or CCONJ onwards into directly consecutive sliding windows: From “weil Menschen neue Fähigkeiten entwickeln,” for example, the lemma windows weil mensch neu, mensch neu fähigkeit, neu fähigkeit entwickeln, and finally fähigkeit entwickeln are created. Titles and subheadings are fully excluded. In the subsequent DeReKo pilot, lemma and token queries are tested in parallel; the lemma level will probably serve as the primary PMI query, while the token level is preserved as a control, diagnostic, or fallback representation. 
-# Caveat: 
-It must be explicitly noted that a lemma-based query groups different inflectional forms under one lemma; therefore, the concrete inflectional structure of the word combination realized in the target text cannot be tested for plausibility.
+(P)MI was obtained from the fixed DeReKo reference corpus using token-based queries; inflectional variants were therefore not grouped under shared lemmas. The values represent the corpus association of the queried token pair or exact two- or three-token sequence and were thus derived at the clause-level. The distributional, statistical plausibility of the whole text was subsequently reconstructed by averaging these clause-level (P)MI values.
 
+Procedure:
+In MODUL 7, the distributional plausibility of the word combinations occurring in the three target texts is examined on the basis of a human-authored reference corpus. (BASIC_GEMINI_NATIVE_001 is excluded from MODUL 7 because Markdown-related contamination produced systematically unreliable token, POS, and dependency annotation. Gemini is retained only in the exclusion audit and does not enter candidate extraction, corpus querying, PMI calculation, aggregation, or final reporting.) For this purpose, all candidates are first preserved with their token and lemma forms as well as their unambiguous assignment to text_id, sentence, and original token position. In simple main clauses and in the respective root area of more complex sentences, the areas pre_f = nominal candidates, functor = VERB, and post_f = predicative candidates are distinguished for x2a1 and x2a2: In the sentence “Menschen entwickeln neue Fähigkeiten,” for example, Menschen ↔ entwickeln can be examined as a connection between pre_f = nominal candidates and functor, and entwickeln ↔ Fähigkeiten as a connection between functor and post_f = predicative candidates. Subordinate clauses and coordinated continuations, by contrast, are not analysed again through this functor logic, but are divided from a recognized SCONJ or CCONJ onwards into directly consecutive sliding windows: From “weil Menschen neue Fähigkeiten entwickeln,” for example, the lemma windows weil mensch neu, mensch neu fähigkeit, neu fähigkeit entwickeln, and finally fähigkeit entwickeln are created. Titles and subheadings are fully excluded. In the subsequent DeReKo pilot, lemma and token queries are tested in parallel; the lemma level will probably serve as the primary PMI query, while the token level is preserved as a control, diagnostic, or fallback representation. \# Caveat: It must be explicitly noted that a lemma-based query groups different inflectional forms under one lemma; therefore, the concrete inflectional structure of the word combination realized in the target text cannot be tested for plausibility.
 
-# # MODUL 7.2b — Establish and freeze the retained sentence scope
+# \# MODUL 7.2b — Establish and freeze the retained sentence scope
 
 ```{r}
 
@@ -347,7 +353,6 @@ cat(
 
 # MODUL 7.5 — Build and freeze the x2b Sliding-Context Candidate Space
 
-
 ```{r}
 
 # MODUL 7.5 — Build and freeze the x2b Sliding-Context Candidate Space
@@ -463,7 +468,7 @@ cat(
 )
 ```
 
-# Die Zahl der `excluded_parser`-Zeilen kann sich gegenüber dem bisherigen Ergebnis ändern: Waren die drei Ausschlüsse ausschließlich durch fehlende Lemmata verursacht, werden sie nun korrekt als gültige Tokenfenster zugelassen und nur `pmi_window_lemma` bleibt dort `NA`.
+# The number of excluded_parser rows may differ from the previous result: if the three exclusions were caused solely by missing lemmas, they are now correctly admitted as valid token windows, while only pmi_window_lemma remains NA in those cases.
 
 # deleted: MODUL 7.5a — Audit Human x2b PMI-window counts
 
@@ -648,7 +653,7 @@ cat(
 )
 ```
 
-# MODUL 7.7a — Freeze and verify the query occurrence and inventory outputs = Freeze and verify occurrence-source mapping (text attribution)
+# MODUL 7.7a — Freeze and verify occurrence-source mapping (text attribution)
 
 ```{r}
 # MODUL 7.7a — Freeze and verify the query occurrence and inventory outputs
@@ -675,12 +680,11 @@ cat(
 )
 ```
 
-# deleted: # MODUL 7.8 — Preview the minimal DeReKo/KorAP pilot
+# deleted: \# MODUL 7.8 — Preview the minimal DeReKo/KorAP pilot
 
-# Note about the Corpus: Institut für Deutsche Sprache (2026): Deutsches Referenzkorpus DeReKo / Archiv der Korpora geschriebener Gegenwartssprache. Mannheim: Leibniz-Institut für Deutsche Sprache. Online verfügbar unter: https://ids-mannheim.de. 
+# Note about the Corpus: Institut für Deutsche Sprache (2026): Deutsches Referenzkorpus DeReKo / Archiv der Korpora geschriebener Gegenwartssprache. Mannheim: Leibniz-Institut für Deutsche Sprache. Online verfügbar unter: https://ids-mannheim.de.
 
-Für das DeReKo-Korpus:Kupietz, M., Belica, H., Keibel, H., & Witt, A. (2010). The German Reference Corpus DeReKo: A primordial corpus for linguistic research. In Proceedings of the 7th International Conference on Language Resources and Evaluation (LREC 2010) (pp. 1848–1854). Valletta, Malta: European Language Resources Association (ELRA) [1.2].Für die KorAP-Infrastruktur:Bański, P., Diewald, N., Hanl, M., Kupietz, M., & Witt, A. (2014). Accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 14th Conference of the European Chapter of the Association for Computational Linguistics (EACL 2014) — Software Demonstrations (pp. 5–8). Gothenburg, Sweden: Association for Computational Linguistics [1.2].Für das R-Package:Kupietz, M., Margaretha, E., & Diewald, N. (2020). RKorAPClient: An R package for accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 12th International Conference on Language Resources and Evaluation (LREC 2020) (pp. 7017–7023). Marseille, France: European Language Resources Association (ELRA) [1.2].
-
+Für das DeReKo-Korpus:Kupietz, M., Belica, H., Keibel, H., & Witt, A. (2010). The German Reference Corpus DeReKo: A primordial corpus for linguistic research. In Proceedings of the 7th International Conference on Language Resources and Evaluation (LREC 2010) (pp. 1848–1854). Valletta, Malta: European Language Resources Association (ELRA) \[1.2\].Für die KorAP-Infrastruktur:Bański, P., Diewald, N., Hanl, M., Kupietz, M., & Witt, A. (2014). Accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 14th Conference of the European Chapter of the Association for Computational Linguistics (EACL 2014) — Software Demonstrations (pp. 5–8). Gothenburg, Sweden: Association for Computational Linguistics \[1.2\].Für das R-Package:Kupietz, M., Margaretha, E., & Diewald, N. (2020). RKorAPClient: An R package for accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 12th International Conference on Language Resources and Evaluation (LREC 2020) (pp. 7017–7023). Marseille, France: European Language Resources Association (ELRA) \[1.2\].
 
 # deleted: MODUL 7.8 — Part 1: Validation, Connection & API Helpers
 
@@ -688,10 +692,11 @@ Für das DeReKo-Korpus:Kupietz, M., Belica, H., Keibel, H., & Witt, A. (2010). T
 
 # deleted: MODUL 7.8 — Part 3: Diagnostics, Decision & Freeze
 
-
 # MODUL 7.9 — Part 1: Initialize the Resumable Query Cache
 
 MODUL 7.9 executes the 747 unique corpus queries through a resumable cache, saves each result incrementally, and audits that every query has a valid status with no missing or duplicated rows. The querying cells are retained as a disabled reconstruction path, while the completed cache audit remains active.
+
+# MODUL 7.9 — Part 1: Initialize the resumable query cache
 
 ```{r}
 #| eval: false
@@ -761,7 +766,6 @@ make_row <- function(row, frequency = NA_real_, pmi = NA_real_, N = NA_real_,
 
 cat("Cached:", nrow(query_cache), "\nRemaining:", nrow(todo_queries), "\n")
 ```
-
 
 # MODUL 7.9 — Part 2: Query and Checkpoint Missing Inventory Rows
 
@@ -919,20 +923,23 @@ cat(
 cat("All 747 globally unique queries are cached and frozen.\n")
 ```
 
-# Note: Part 3 liest den fertigen Cache bereits ein und auditiert ihn. Ein erneutes Speichern ist redundant.
+# Note: Part 3 already reads and audits the completed cache. Saving it again is redundant.
 
 # MODUL 7.10 — Part 1: Reload and Mapping to Occurrence Level
+
 MODUL 7.10 reconnects the 747 globally deduplicated DeReKo queries with the original 752 occurrences in the three target texts.
 
 Its importance lies in the fact that the query cache contains only one result per unique query, while the analysis requires text-level attribution. MODUL 7.10 therefore:
 
-- maps each corpus frequency and PMI value back to its original text occurrence;
-- preserves candidate_type, window size, sentence, and window_id_control;
-- reconstructs text-internal multiword combinations;
-- calculates n_mw_Combo and occurrence-weighted PMI diagnostics;
-- creates the analytical basis for all final text-level PMI summaries and reporting tables.
+-   maps each corpus frequency and PMI value back to its original text occurrence;
+-   preserves candidate_type, window size, sentence, and window_id_control;
+-   reconstructs text-internal multiword combinations;
+-   calculates n_mw_Combo and occurrence-weighted PMI diagnostics;
+-   creates the analytical basis for all final text-level PMI summaries and reporting tables.
 
 Without MODUL 7.10, the corpus results would remain detached from the texts and could not be interpreted as text-level distributional-plausibility measures.
+
+# MODUL 7.10 — Part 1: Reload and Mapping to Occurrence Level
 
 ```{r}
 
@@ -1115,12 +1122,11 @@ cat(
 
 # delited: Confirmation before Part 3
 
-# MODUL 7.10 — Part 3: Final Audit, Asset Freeze, and Reporting
+# MODUL 7.10 — Part 3: Final Audit and Asset Freeze
 
 ```{r}
-# MODUL 7.10 — Part 3: Final Audit, Asset Freeze, and Reporting
 
-library(dplyr)
+# MODUL 7.10 — Part 3: Final Audit, Asset Freeze, and Reporting
 
 modul_7_pmi_final_audit <- tibble::tibble(
   n_occurrence_rows = nrow(enriched_occurrences), n_unique_queries = nrow(query_cache), n_unique_queries_ok = sum(query_cache$query_status == "ok"),
@@ -1176,12 +1182,10 @@ cat(
 ```
 
 # MODUL 7.10b — Calculate and freeze the PMI frequency-sensitivity audit
+
 7.10b creates:
 
-modul_7_pmi_frequency_sensitivity_audit.rds
-pmi_rows
-frequency_sensitivity_audit
-m7_report_paths
+modul_7_pmi_frequency_sensitivity_audit.rds pmi_rows frequency_sensitivity_audit m7_report_paths
 
 These are required for the final reporting sequence.
 
@@ -1235,7 +1239,7 @@ print(frequency_sensitivity_audit, n = Inf, width = Inf)
 cat("\nMODUL 7.10b frozen:", m7_report_paths[["sensitivity"]], "\n")
 ```
 
-# Note: 
+# Note: The following is still subject to revision
 
 PMI values were derived from the Mannheim DeReKo reference corpus, reflecting corpus-based distributional association. DeReKo is the world’s largest collection of German-language corpora and an empirical basis for linguistic research. The Mannheim German Reference Corpus and the Corpora of Contemporary Written German at the IDS together constitute the world’s largest linguistically motivated collection, with over 63.8 billion words as of January 2026, and they can be accessed free of charge via COSMAS II and KorAP. (cf. https://www.ids-mannheim.de/en/digspra/pb-s1/projects/corpus-development/). Human-baseline distance has not yet been calculated.
 
@@ -1244,7 +1248,7 @@ PMI values were derived from the Mannheim DeReKo reference corpus, reflecting co
 Below 1.000 = only part of the eligible material produced a valid PMI value.
 
 | Column           | Meaning                        | Format     |
-| ---------------- | ------------------------------ | ---------- |
+|------------------|--------------------------------|------------|
 | `text_id`        | Text origin                    | text       |
 | `candidate_type` | x2 branch                      | text       |
 | `token_n_in_w`   | 2-token or 3-token calculation | integer    |
@@ -1254,41 +1258,25 @@ Below 1.000 = only part of the eligible material produced a valid PMI value.
 | `mean_pmi`       | mean valid PMI in bits         | 3 decimals |
 | `median_pmi`     | robust central PMI             | 3 decimals |
 
-- 
-- ChatGPT’s six approved functor–object combinations had a mean PMI of 3.569, compared with 0.816 across eleven Human combinations, producing an observed difference of 2.753. However, this difference was based on only six ChatGPT and eleven Human combinations and is therefore interpreted as an exploratory text-specific pattern rather than a general model effect. Therefore, more texts per source would be required before presenting it as a real model-level contrast.
-- Claude generated relatively few connector-based x2c windows. This pattern should be inspected alongside its y6 function-word and connector proportions: agreement would support comparatively lower connector density, whereas divergence would suggest that the reduced x2c count is mainly attributable to text length, clause length, or the restricted connector-window extraction rules.
-PMI is a base-2 logarithmic association measure, reported in bits.
+-   
 
-PMI	Interpretation under independence
-0	observed as often as expected by chance
-1	2 times the expected rate
-2	4 times the expected rate
-3	8 times the expected rate
-−1	half the expected rate
-8	256 times the expected rate
+-   ChatGPT’s six approved functor–predicate combinations had a mean PMI of 3.569, compared with 0.816 across eleven Human combinations, producing an observed difference of 2.753. However, this difference was based on only six ChatGPT and eleven Human combinations and is therefore interpreted as an exploratory text-specific pattern rather than a general model effect. Therefore, more texts per source would be required before presenting it as a real model-level contrast.
+
+-   Claude generated relatively few connector-based x2c windows. This pattern should be inspected alongside its y6 function-word and connector proportions: agreement would support comparatively lower connector density, whereas divergence would suggest that the reduced x2c count is mainly attributable to text length, clause length, or the restricted connector-window extraction rules. PMI is a base-2 logarithmic association measure, reported in bits.
+
+PMI Interpretation under independence 0 observed as often as expected by chance 1 2 times the expected rate 2 4 times the expected rate 3 8 times the expected rate −1 half the expected rate 8 256 times the expected rate
 
 A positive PMI therefore indicates that the words or sequence occur together more often than expected from their individual corpus frequencies. There is no fixed upper bound. That is why very rare combinations can produce very high PMI.
 
-An unattested combination does not receive PMI 0. Its mathematical PMI would be undefined because the joint probability is zero. 
-Frequency and PMI answer different questions:
+An unattested combination does not receive PMI 0. Its mathematical PMI would be undefined because the joint probability is zero. Frequency and PMI answer different questions:
 
-Quantity	            Question
-corpus_frequency	    How often did the combination occur?
-corpus_pmi	    How unexpectedly strong is the combination relative to the frequencies of its individual words?
+Quantity Question corpus_frequency How often did the combination occur? corpus_pmi How unexpectedly strong is the combination relative to the frequencies of its individual words?
 
 A frequent combination can have low PMI when its words are individually very frequent. A rare combination can have high PMI when its component words are also rare. However, a frequency of one does not automatically produce an odd PMI. The value also depends on the marginal frequencies and corpus total. Nevertheless, singleton and very-low-frequency combinations are exactly where PMI estimates are least stable.
 
-* What does frequency_only mean?
-In this implementation, frequency_only means that the combination had a returned joint corpus frequency, but one or more quantities required for PMI were unavailable or invalid. For exact MWS combinations, valid PMI requires the frequency of the full combination, each component’s marginal frequency, and a valid common corpus/event-space total. If the full combination frequency exists but the complete PMI denominator cannot be constructed, the row receives query_status = frequency_only, corpus_frequency = returned value, and corpus_pmi = NA. frequency_only does not correct rare-event bias; it merely prevents an invalid PMI from being calculated. It belongs in the technical audit, not in the final association table.
+-   What does frequency_only mean? In this implementation, frequency_only means that the combination had a returned joint corpus frequency, but one or more quantities required for PMI were unavailable or invalid. For exact MWS combinations, valid PMI requires the frequency of the full combination, each component’s marginal frequency, and a valid common corpus/event-space total. If the full combination frequency exists but the complete PMI denominator cannot be constructed, the row receives query_status = frequency_only, corpus_frequency = returned value, and corpus_pmi = NA. frequency_only does not correct rare-event bias; it merely prevents an invalid PMI from being calculated. It belongs in the technical audit, not in the final association table.
 
-What does unattested mean?
-query_status = unattested, corpus_frequency = 0, and corpus_pmi = NA. The exact pair or sequence was not found in the selected DeReKo virtual corpus. PMI is not set to zero because zero would mean “observed at exactly the expected rate.” With zero observed co-occurrences, PMI is mathematically undefined in the ordinary unsmoothed formulation.
-What exactly is an mwCombo? Term meaning in this project:
-1. mwCombo	An extracted pair or exact multiword-window candidate,
-2. MWS	A sequence containing two or more words with variying associative strength,
-3. collocation	A sequence whose components show sufficient statistical contingency (cf. Yi 2021)
-4 formulaicity	Broader degree of conventionalization or entrenchment; PMI captures only one statistical dimension.
-Consequently, the pipeline asks:
+What does unattested mean? query_status = unattested, corpus_frequency = 0, and corpus_pmi = NA. The exact pair or sequence was not found in the selected DeReKo virtual corpus. PMI is not set to zero because zero would mean “observed at exactly the expected rate.” With zero observed co-occurrences, PMI is mathematically undefined in the ordinary unsmoothed formulation. What exactly is an mwCombo? Term meaning in this project: 1. mwCombo An extracted pair or exact multiword-window candidate, 2. MWS A sequence containing two or more words with variying associative strength, 3. collocation A sequence whose components show sufficient statistical contingency (cf. Yi 2021) 4 formulaicity Broader degree of conventionalization or entrenchment; PMI captures only one statistical dimension. Consequently, the pipeline asks:
 
 To what degree does each extracted mwCombo display corpus-based contingency?
 
@@ -1296,7 +1284,10 @@ High PMI indicates that its components combine more frequently than predicted fr
 
 # Inspect frozen PMI sufficient statistics
 
+# MODUL 7.10c — Calculate and freeze the final PMI summary
+
 ```{r}
+
 # MODUL 7.10c — Calculate and freeze the final PMI summary
 
 final_pmi_summary <- pmi_rows |>
@@ -1335,6 +1326,7 @@ cat("\nMODUL 7.10c frozen:", m7_report_paths[["summary"]], "\n")
 # MODUL 7.10d — Export the final PMI presentation tables
 
 ```{r}
+
 # MODUL 7.10d — Export the final PMI presentation tables
 
 fmt3 <- function(x) ifelse(is.na(x), NA_character_, sprintf("%.3f", x))
@@ -1376,362 +1368,292 @@ print(final_pmi_table, n = Inf, width = Inf)
 cat("\nMODUL 7.10d tables exported.\n")
 ```
 
+#  TEMPORARY AUDIT MODUL 7.10c1 — Print stored MODUL 7 object names only
+
+```{r}
+# MODUL 7.10c1 — Print stored MODUL 7 object names only
+
+modul_7_stored_object_inventory |>
+  dplyr::distinct(source, object) |>
+  dplyr::arrange(source, object) |>
+  dplyr::group_by(source) |>
+  dplyr::group_walk(function(.x, .y) {
+    cat(
+      "\nSOURCE: ", .y$source, "\n",
+      paste(.x$object, collapse = "\n"),
+      "\n",
+      sep = ""
+    )
+  })
+
+```
+
+# MODUL 7 object overview
+
+```{r}
+
+# MODUL 7 — Overview of stored objects in the indices bundles
+
+modul_7_object_overview <- tibble::tribble(
+  ~object, ~purpose,
+
+  "final_pmi_summary",
+  "Full-precision PMI summary by text, candidate type, and token length.",
+
+  "main_results",
+  "Simplified report table containing n, mean PMI, and median PMI.",
+
+  "frequency_sensitivity",
+  "Simplified technical table showing sensitivity to sparse corpus evidence.",
+
+  "frequency_sensitivity_audit",
+  "Full-precision audit of PMI sensitivity to low corpus frequencies.",
+
+  "enriched_occurrences",
+  "Annotated occurrence rows with mapped DeReKo results and query statuses.",
+
+  "final_audit",
+  "Final integrity checks and frozen MODUL 7 row counts.",
+
+  "measure_status",
+  "Technical indicator showing whether at least one valid PMI value was returned for a text and candidate type.",
+
+  "mwCombo_by_text",
+  "Unique text-internal mwCombos with corpus frequency, PMI, and n_mw_Combo.",
+
+  "query_inventory",
+  "Deduplicated inventory of the 747 corpus queries.",
+
+  "query_occurrences",
+  "All annotated target-text query occurrences before DeReKo-result mapping.",
+
+  "query_results",
+  "Cached DeReKo result for every unique query.",
+
+  "text_level_diagnostics",
+  "Technical occurrence, return-status, repetition, and PMI diagnostics by text and candidate type.",
+
+  "x2a_functor_candidates",
+  "Parser-selected x2a functor–nominal and functor–predicate candidates before corpus querying.",
+
+  "x2a_occurrences",
+  "Annotated and corpus-enriched occurrence rows for x2a1 and x2a2.",
+
+  "x2b_occurrences",
+  "Annotated and corpus-enriched occurrence rows for x2b sliding windows.",
+
+  "x2b_sliding_windows",
+  "Extracted x2b two- and three-token sliding windows before corpus querying.",
+
+  "x2c_connector_sw",
+  "Extracted connector-based x2c sliding windows before corpus querying.",
+
+  "x2c_occurrences",
+  "Annotated and corpus-enriched occurrence rows for x2c1 and x2c2."
+)
+
+print(modul_7_object_overview, n = Inf, width = Inf)
+```
+
+# Note: The x2a rows are termed functor candidates because they are parser-selected potential functor–nominal or functor–predicate relations before corpus querying. Their identification depends on the parser-assigned root, dependency relation, head attachment, token position, and part-of-speech annotation. They are therefore candidates rather than independently verified syntactic occurrences.
 
 # MODUL 7.10 d1 — Calculate whole-text x2 family summaries TOMORROW EXCLUDE %%%
 
 ```{r}
-# MODUL 7.10c1 — Calculate whole-text x2 family summaries
+# MODUL 7.10c1 — Construct the first whole-text overview of the indices bundles
 
-x2a_text_summary <- pmi_rows |>
-  dplyr::filter(
-    candidate_type %in% c("x2a1_nominal", "x2a2_predicative"),
-    token_n_in_w == 2L
-  ) |>
-  dplyr::group_by(text_id) |>
-  dplyr::summarise(
-    x2a_functor_based_text_n_pmi2 = dplyr::n(),
-    x2a_functor_based_text_mean_pmi2 = mean(corpus_pmi),
-    x2a_functor_based_text_median_pmi2 = median(corpus_pmi),
-    .groups = "drop"
-  ) |>
-  dplyr::mutate(
-    x2a_functor_based_text_chance_normalized_association_pct =
-      100 * 2^x2a_functor_based_text_mean_pmi2
-  )
+final_pmi_summary <- readRDS(
+  "../measure_outputs/modul_7_pmi_final_summary.rds"
+)
+text_order <- c(
+  "HUMAN_BASELINE_001",
+  "BASIC_CHATGPT_NATIVE_001",
+  "BASIC_CLAUDE_NATIVE_001"
+)
+indices_bundle_order <- c(
+  "x2a_functor_based",
+  "x2b_sliding_sequence",
+  "x2c_connector_sliding_window"
+)
 
-x2_sequence_text_summary <- pmi_rows |>
-  dplyr::filter(
-    candidate_type %in% c("x2b", "x2c1_subc_sw", "x2c2_cor_sw")
-  ) |>
-  dplyr::group_by(text_id, token_n_in_w) |>
-  dplyr::summarise(
-    n_pmi = dplyr::n(),
-    mean_pmi = mean(corpus_pmi),
-    median_pmi = median(corpus_pmi),
-    .groups = "drop"
-  ) |>
+candidate_order <- c(
+  "x2a1_nominal",
+  "x2a2_predicative",
+  "x2b",
+  "x2c1_subc_sw",
+  "x2c2_cor_sw"
+)
+
+fmt3 <- function(x) ifelse(is.na(x), NA_character_, sprintf("%.3f", x))
+
+modul_7_indices_bundles_overview <- final_pmi_summary |>
   dplyr::mutate(
-    chance_normalized_association_pct = 100 * 2^mean_pmi
-  ) |>
-  tidyr::pivot_wider(
-    names_from = token_n_in_w,
-    values_from = c(
-      n_pmi, mean_pmi, median_pmi,
-      chance_normalized_association_pct
+    indices_bundle = dplyr::case_when(
+      candidate_type %in% c("x2a1_nominal", "x2a2_predicative") ~
+        "x2a_functor_based",
+      candidate_type == "x2b" ~
+        "x2b_sliding_sequence",
+      candidate_type %in% c("x2c1_subc_sw", "x2c2_cor_sw") ~
+        "x2c_connector_sliding_window"
     ),
-    names_glue = "x2_sequence_based_text_{.value}_pmi{token_n_in_w}"
-  )
-
-x2_text_family_summary <- x2a_text_summary |>
-  dplyr::left_join(x2_sequence_text_summary, by = "text_id") |>
-  dplyr::arrange(match(text_id, text_order))
-
-print(x2_text_family_summary, n = Inf, width = Inf)
-```
-
-
-# delite tomorrow
-
-```{r}
-# MODUL 7.10b — Prepare Exact-Window Frequency–PMI Data
-
-library(dplyr)
-library(tidyr)
-library(purrr)
-library(broom)
-
-frequency_pmi_data <- readRDS(
-  "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
-)$mwCombo_by_text |>
-  dplyr::filter(
-    query_status == "ok",
-    candidate_type %in% c("x2b", "x2c1_subc_sw", "x2c2_cor_sw"),
-    corpus_frequency > 0,
-    is.finite(corpus_pmi)
+    index_description = dplyr::case_when(
+      candidate_type == "x2a1_nominal" ~
+        "preverbal nominal–functor",
+      candidate_type == "x2a2_predicative" ~
+        "functor–predicate",
+      candidate_type == "x2b" ~
+        "sliding two- or three-token sequence",
+      candidate_type == "x2c1_subc_sw" ~
+        "subordinating-connector sliding window",
+      candidate_type == "x2c2_cor_sw" ~
+        "correlative-connector sliding window"
+    )
   ) |>
-  dplyr::mutate(
-    text_id = stats::relevel(factor(text_id), ref = "HUMAN_BASELINE_001"),
-    log_joint_frequency = log10(corpus_frequency)
+  dplyr::arrange(
+    match(indices_bundle, indices_bundle_order),
+    match(candidate_type, candidate_order),
+    match(text_id, text_order),
+    token_n_in_w
+  ) |>
+  dplyr::transmute(
+    text_id,
+    indices_bundle,
+    candidate_type,
+    index_description,
+    token_n_in_w = as.integer(token_n_in_w),
+    n_pmi = as.integer(n_pmi),
+   mean_pmi = as.integer(round(mean_pmi)),
+median_pmi = as.integer(round(median_pmi))
   )
 
 stopifnot(
-  !any(frequency_pmi_data$candidate_type %in% c("x2a1_nominal", "x2a2_predicative")),
-  all(frequency_pmi_data$token_n_in_w %in% c(2L, 3L))
+  !anyDuplicated(
+    modul_7_indices_bundles_overview[
+      c("text_id", "candidate_type", "token_n_in_w")
+    ]
+  ),
+  all(modul_7_indices_bundles_overview$token_n_in_w %in% c(2L, 3L)),
+  sum(modul_7_indices_bundles_overview$n_pmi) == 633L
 )
 
-print(
-  frequency_pmi_data |>
-    dplyr::count(candidate_type, token_n_in_w, text_id, name = "n_mwCombo"),
-  n = Inf,
-  width = Inf
-)
+print(modul_7_indices_bundles_overview, n = Inf, width = Inf)
 ```
+# Note: Pointwise mutual information measures the corpus-based contingency of a queried token combination relative to the occurrence expected from the marginal frequencies of its constituent tokens. A value of 0 indicates occurrence at the expected rate, whereas positive values indicate increasingly greater-than-expected association; because PMI is logarithmic and has no fixed upper bound, high values are mathematically possiblePMI3 values are not interpreted on the same numerical scale as PMI2. Comparisons are undertaken only within the same branch and token length; for example, x2b PMI3 across texts, never x2b PMI3 against x2b PMI2 or x2a PMI2. rare and singleton combinations can yield particularly high and less stable estimates. In accordance with the distinction between phrasal frequency and statistical contingency discussed by Yi (2021), PMI is interpreted here as an association measure rather than as raw recurrence or complete formulaicity.PMI2 and PMI3 quantify differently defined co-occurrences of mwCombos (multi word combinations): a two-token sequence and an exact three-token sequence, respectively. These mwCombos are token-based query units that retain the inflectional forms realized in the target texts and should not be equated with MWS, which tend to be more formulaic and are often analysed on a scale of lemmatization. Therefore, PMI2 and PMI3 values are not directly comparable. It should not be concluded that a PMI3 value of 8 indicates a stronger association than a PMI2 value of 4.
 
+* n_pmi: how many valid PMI values entered the calculation.
+mean_pmi: the arithmetic average of those PMI values.
+median_pmi: the middle PMI value after sorting them.
 
-# same but with fitting a model # MODUL 7.11 — Exploratory Stratified Frequency–PMI Interaction Models
+** The individual PMI values are first obtained at the clause level for each approved mwCombo: x2a captures parser-based functor–nominal and functor–predicate relations in the main-clause/root region, whereas x2b and x2c capture exact two- or three-token windows, including connector-based combinations. These individual values are then averaged across the whole text separately for each index in the indices bundles, so the reported mean and median PMI are text-level summaries rather than single sentence- or window-level values. Comparisons are therefore made only within the same index and token length, while the indices bundles together reconstruct the text’s overall distributional plausibility from these clause-level associations.
+
+**! The x2b index applies PMI to exact consecutive two- and three-token mwCombos extracted by a sliding-window procedure. The sliding window defines the local candidate units, while PMI quantifies the corpus-based contingency of each complete combination. This complements the parser-based x2a indices by capturing sequential associations that are not restricted to predefined functor relations.
+
+# MODUL 7.10c2 — Print representative mwCombos from the frozen indices bundle
 
 ```{r}
-# MODUL 7.11 — Stratified Within-Text Frequency–PMI Models
+# MODUL 7.10c2 — Print representative mwCombos from the frozen indices bundle
 
-library(dplyr)
-library(tidyr)
-library(purrr)
-library(broom)
-
-pair_level_data <- readRDS(
+x2_bundle <- readRDS(
   "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
-)$mwCombo_by_text |>
+)
+
+representative_mwCombo_overview <- x2_bundle$mwCombo_by_text |>
   dplyr::filter(
     query_status == "ok",
-    is.finite(corpus_pmi),
-    corpus_frequency > 0,
-    candidate_type %in% c("x2b", "x2c1_subc_sw", "x2c2_cor_sw")
+    is.finite(corpus_pmi)
   ) |>
-  dplyr::mutate(log_freq = log10(corpus_frequency))
-
-within_text_frequency_pmi_models <- pair_level_data |>
-  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
-  tidyr::nest() |>
+  dplyr::group_by(
+    text_id,
+    candidate_type,
+    token_n_in_w
+  ) |>
   dplyr::mutate(
-    n_mwCombo = purrr::map_int(data, nrow),
-    n_unique_freq = purrr::map_int(data, ~ dplyr::n_distinct(.x$log_freq)),
-    model_status = dplyr::if_else(
-      n_mwCombo >= 3L & n_unique_freq >= 2L,
-      "fitted",
-      "insufficient_data"
-    ),
-    model = purrr::map2(
-      data,
-      model_status,
-      ~ if (.y == "fitted") stats::lm(corpus_pmi ~ log_freq, data = .x) else NULL
-    ),
-    tidy_out = purrr::map(
-      model,
-      ~ if (is.null(.x)) tibble::tibble() else broom::tidy(.x)
-    ),
-    glance_out = purrr::map(
-      model,
-      ~ if (is.null(.x)) tibble::tibble() else broom::glance(.x)
-    )
-  )
-
-within_text_frequency_pmi_results <- within_text_frequency_pmi_models |>
-  dplyr::select(
-    text_id, candidate_type, token_n_in_w,
-    n_mwCombo, model_status, tidy_out, glance_out
+    mean_pmi_full = mean(corpus_pmi),
+    distance_from_mean = abs(corpus_pmi - mean_pmi_full)
   ) |>
-  tidyr::unnest(tidy_out) |>
-  dplyr::filter(term == "log_freq") |>
-  dplyr::rename(
-    frequency_pmi_slope = estimate,
-    slope_std_error = std.error,
-    slope_statistic = statistic,
-    slope_p_value = p.value
+  dplyr::slice_min(
+    order_by = distance_from_mean,
+    n = 1,
+    with_ties = FALSE
   ) |>
-  dplyr::left_join(
-    within_text_frequency_pmi_models |>
-      dplyr::select(text_id, candidate_type, token_n_in_w, glance_out) |>
-      tidyr::unnest(glance_out) |>
-      dplyr::select(text_id, candidate_type, token_n_in_w, r.squared, adj.r.squared),
-    by = c("text_id", "candidate_type", "token_n_in_w")
-  ) |>
-  dplyr::arrange(text_id, candidate_type, token_n_in_w)
-
-print(
-  within_text_frequency_pmi_models |>
-    dplyr::select(
-      text_id, candidate_type, token_n_in_w,
-      n_mwCombo, n_unique_freq, model_status
-    ),
-  n = Inf,
-  width = Inf
-)
-
-print(within_text_frequency_pmi_results, n = Inf, width = Inf)
-```
-# Table name: Stratified within-text joint-frequency–PMI dependency analysis.
-
-# # MODUL 7.12 — Plot Exact-Window Frequency–PMI Relationships
-
-```{r}
-# MODUL 7.11a — Plot Within-Text Frequency–PMI Relationships
-
-# MODUL 7.11a — Plot Within-Text Frequency–PMI Relationships
-
-plot_data <- pair_level_data |>
-  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
-  dplyr::mutate(n_stratum = dplyr::n()) |>
   dplyr::ungroup() |>
-  dplyr::filter(n_stratum >= 15L)
-
-frequency_pmi_plot <- ggplot2::ggplot(
-  plot_data,
-  ggplot2::aes(x = log_freq, y = corpus_pmi)
-) +
-  ggplot2::geom_point(alpha = 0.5, size = 0.3) +
-  ggplot2::geom_smooth(
-    method = "lm",
-    formula = y ~ x,
-    se = TRUE,
-    linewidth = 0.8
-  ) +
-  ggplot2::facet_wrap(
-    ~ interaction(text_id, candidate_type, token_n_in_w, sep = " | "),
-    scales = "free_y"
-  ) +
-  ggplot2::labs(
-    title = "Within-text frequency–PMI relationship",
-    subtitle = paste(
-      "Each panel shows one text, branch, and token length;",
-      "only strata with at least 15 valid mwCombos are displayed."
-    ),
-    x = "Joint frequency of the complete mwCombo (log10)",
-    y = "PMI of the same mwCombo (bits)",
-    caption = paste(
-      "x2a1 and x2a2 are excluded.",
-      "Strata with n < 15 are omitted from the figure because",
-      "their fitted trends are unstable;",
-      "but remain preserved in the numerical diagnostics."
+  dplyr::mutate(
+    indices_bundle = dplyr::case_when(
+      candidate_type == "x2a1_nominal" ~
+        "x2a1 preverbal nominal–functor (PMI2)",
+      candidate_type == "x2a2_predicative" ~
+        "x2a2 functor–predicate (PMI2)",
+      candidate_type == "x2b" & token_n_in_w == 2L ~
+        "x2b sliding sequence (PMI2)",
+      candidate_type == "x2b" & token_n_in_w == 3L ~
+        "x2b sliding sequence (PMI3)",
+      candidate_type == "x2c1_subc_sw" & token_n_in_w == 2L ~
+        "x2c1 subordinating-connector window (PMI2)",
+      candidate_type == "x2c1_subc_sw" & token_n_in_w == 3L ~
+        "x2c1 subordinating-connector window (PMI3)",
+      candidate_type == "x2c2_cor_sw" & token_n_in_w == 2L ~
+        "x2c2 correlative-connector window (PMI2)",
+      candidate_type == "x2c2_cor_sw" & token_n_in_w == 3L ~
+        "x2c2 correlative-connector window (PMI3)"
     )
-  ) +
-  ggplot2::theme_minimal(base_size = 12) +
-  ggplot2::theme(
-    panel.spacing = grid::unit(0.9, "lines"),
-    strip.text = ggplot2::element_text(face = "bold"),
-    plot.title = ggplot2::element_text(face = "bold"),
-    plot.caption = ggplot2::element_text(hjust = 0)
+  ) |>
+  dplyr::arrange(
+    match(candidate_type, c(
+      "x2a1_nominal",
+      "x2a2_predicative",
+      "x2b",
+      "x2c1_subc_sw",
+      "x2c2_cor_sw"
+    )),
+    token_n_in_w,
+    match(text_id, c(
+      "HUMAN_BASELINE_001",
+      "BASIC_CHATGPT_NATIVE_001",
+      "BASIC_CLAUDE_NATIVE_001"
+    ))
+  ) |>
+  dplyr::transmute(
+    indices_bundle,
+    text_id,
+    example = pmi_window,
+    mean_pmi = as.integer(round(mean_pmi_full))
   )
 
-print(frequency_pmi_plot)
+print(representative_mwCombo_overview, n = Inf, width = Inf)
 ```
+
 # BITTE PRÜFEN 19.07.2026
-A stratified within-text linear regression model was fitted aiming for a diagnostic mean to se how joint frequence is influencing PMI values. For each text, x2b and x2c indices, corpus PMI were modelled as a function of the logarithm of the joint DeReKo frequency of the same exact mwCombo. The analysis was conducted with the motivation to examined whether high PMI values were systematically concentrated among rarely attested combinations, as literature generally indicates . Negative slopes indicate that rarer combinations tended to receive higher PMI values, whereas near-zero slopes indicate little systematic linear frequency dependence and positive slopes indicate increasing PMI with increasing joint frequency. The corresponding R
-2
- values describe how much of the within-stratum PMI variation was aligned with this linear frequency relationship. Because joint frequency is itself a component of PMI, the regressions are interpreted as descriptive sensitivity diagnostics rather than independent validation or causal models.
+
+A stratified within-text linear regression model was fitted aiming for a diagnostic mean to se how joint frequence is influencing PMI values. For each text, x2b and x2c indices, corpus PMI were modelled as a function of the logarithm of the joint DeReKo frequency of the same exact mwCombo. The analysis was conducted with the motivation to examined whether high PMI values were systematically concentrated among rarely attested combinations, as literature generally indicates . Negative slopes indicate that rarer combinations tended to receive higher PMI values, whereas near-zero slopes indicate little systematic linear frequency dependence and positive slopes indicate increasing PMI with increasing joint frequency. The corresponding R 2 values describe how much of the within-stratum PMI variation was aligned with this linear frequency relationship. Because joint frequency is itself a component of PMI, the regressions are interpreted as descriptive sensitivity diagnostics rather than independent validation or causal models.
 
 Thesis-ready caveat
 
-Only strata containing at least 15 valid mwCombos were included in the visualization to avoid displaying highly unstable fitted trends. All smaller strata remained preserved in the numerical diagnostics. The observations include overlapping windows and originate from one text per source; consequently, the fitted slopes and R
-2
- values characterize the present texts only and do not constitute model-level comparisons. More texts per source would be required before presenting a real model-level contrast.
+Only strata containing at least 15 valid mwCombos were included in the visualization to avoid displaying highly unstable fitted trends. All smaller strata remained preserved in the numerical diagnostics. The observations include overlapping windows and originate from one text per source; consequently, the fitted slopes and R 2 values characterize the present texts only and do not constitute model-level comparisons. More texts per source would be required before presenting a real model-level contrast.
 
 
-#
 
-```{r}
-# MODUL 7.11a — Plot Within-Text DeReKo Frequency–PMI Relationships
-
-plot_data <- pair_level_data |>
-  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
-  dplyr::mutate(n_stratum = dplyr::n()) |>
-  dplyr::ungroup() |>
-  dplyr::filter(n_stratum >= 15L)
-
-frequency_pmi_plot <- ggplot2::ggplot(
-  plot_data,
-  ggplot2::aes(x = log_freq, y = corpus_pmi)
-) +
-  ggplot2::geom_point(alpha = 0.5, size = 0.3) +
-  ggplot2::geom_smooth(
-    method = "lm",
-    formula = y ~ x,
-    se = TRUE,
-    linewidth = 0.8
-  ) +
-  ggplot2::facet_wrap(
-    ~ interaction(text_id, candidate_type, token_n_in_w, sep = " | "),
-    scales = "free_y"
-  ) +
-  ggplot2::labs(
-    title = "Within-text DeReKo frequency–PMI relationship",
-    subtitle = paste(
-      "Each point represents one unique target-text mwCombo;",
-      "the line shows its within-text relationship between joint corpus frequency and PMI."
-    ),
-    x = "Joint DeReKo frequency of the complete mwCombo (log10)",
-    y = "PMI of the same mwCombo (bits)",
-    caption = paste(
-      "x2a1 and x2a2 are excluded. PMI2 and PMI3 are displayed separately.",
-      "Only strata with at least 15 valid mwCombos are shown;",
-      "smaller strata remain available in the numerical diagnostics."
-    )
-  ) +
-  ggplot2::theme_minimal(base_size = 12) +
-  ggplot2::theme(
-    panel.spacing = grid::unit(0.9, "lines"),
-    strip.text = ggplot2::element_text(face = "bold"),
-    plot.title = ggplot2::element_text(face = "bold"),
-    plot.caption = ggplot2::element_text(hjust = 0)
-  )
-
-print(frequency_pmi_plot)
-```
+# Note: n_mw_Combo=number of multiword combinations produced by the sliding-window logic within one target area
 
 
-#
+# 
 
 ```{r}
-# MODUL 7.10d1 — Freeze the whole-text PMI plot data
+# MODULE-INDEPENDENT — Calculate and freeze sentence-length diagnostics
 
-# MODUL 7.10d1 — Freeze whole-text PMI plot data
-
-x2_text_family_plot_data <- x2_text_family_summary |>
-  dplyr::select(
-    text_id,
-    x2a_functor_based_text_mean_pmi2,
-    x2a_functor_based_text_median_pmi2,
-    x2_sequence_based_text_mean_pmi_pmi2,
-    x2_sequence_based_text_median_pmi_pmi2,
-    x2_sequence_based_text_mean_pmi_pmi3,
-    x2_sequence_based_text_median_pmi_pmi3
-  ) |>
-  dplyr::rename(
-    x2_sequence_based_text_mean_pmi2 = x2_sequence_based_text_mean_pmi_pmi2,
-    x2_sequence_based_text_median_pmi2 = x2_sequence_based_text_median_pmi_pmi2,
-    x2_sequence_based_text_mean_pmi3 = x2_sequence_based_text_mean_pmi_pmi3,
-    x2_sequence_based_text_median_pmi3 = x2_sequence_based_text_median_pmi_pmi3
-  ) |>
-  tidyr::pivot_longer(
-    -text_id,
-    names_to = c("x2_family", "statistic", "token_n_in_w"),
-    names_pattern = "^(x2a_functor_based|x2_sequence_based)_text_(mean|median)_pmi([23])$",
-    values_to = "pmi"
-  ) |>
-  dplyr::mutate(
-    token_n_in_w = as.integer(token_n_in_w),
-    text_id = factor(text_id, text_order),
-    x2_family = factor(x2_family, c("x2a_functor_based", "x2_sequence_based")),
-    statistic = factor(statistic, c("mean", "median"))
-  ) |>
-  dplyr::arrange(x2_family, token_n_in_w, text_id, statistic)
-
-stopifnot(nrow(x2_text_family_plot_data) == 18L, !anyNA(x2_text_family_plot_data$pmi))
-
-saveRDS(
-  x2_text_family_plot_data,
-  "../measure_outputs/modul_7_x2_text_family_plot_data.rds",
-  version = 3
+parsed_S_layer <- readRDS(
+  "../data_prep_CCP_output/parsed_S_layer.rds"
 )
 
-readr::write_csv(
-  x2_text_family_plot_data,
-  "../measure_outputs/modul_7_x2_text_family_plot_data.csv",
-  na = "NA"
+sentence_segment_table <- readRDS(
+  "M6_prep_outputs/modul_6_LSA_inputs.rds"
+)$sentence_segment_table
+
+stopifnot(
+  is.data.frame(parsed_S_layer),
+  is.data.frame(sentence_segment_table),
+  all(c("text_id", "sentence_id", "n_words", "n_tokens") %in% names(parsed_S_layer)),
+  all(c("text_id", "sentence_id") %in% names(sentence_segment_table))
 )
-
-print(
-  x2_text_family_plot_data |>
-    dplyr::mutate(pmi = sprintf("%.3f", pmi)),
-  n = Inf,
-  width = Inf
-)
-```
-
-# MODUL INDEPENDENT  — Calculate and freeze separate sentence-length diagnostics
-
-```{r}
-# MODUL 7.5a — Calculate and freeze separate sentence-length diagnostics
-
 sentence_length_diagnostics <- parsed_S_layer |>
   dplyr::semi_join(sentence_segment_table, by = c("text_id", "sentence_id")) |>
   dplyr::mutate(
@@ -1762,182 +1684,429 @@ stopifnot(
   all(is.finite(sentence_length_diagnostics$sentence_length_words_mean))
 )
 
-saveRDS(
-  sentence_length_diagnostics,
-  "../measure_outputs/modul_7_sentence_length_diagnostics.rds",
-  version = 3
-)
+sentence_length_path <- "../measure_outputs/module_independent_sentence_length_diagnostics.rds"
 
-sentence_length_diagnostics <- readRDS(
-  "../measure_outputs/modul_7_sentence_length_diagnostics.rds"
-)
+saveRDS(sentence_length_diagnostics, sentence_length_path, version = 3)
+sentence_length_diagnostics <- readRDS(sentence_length_path)
 
 print(sentence_length_diagnostics, n = Inf, width = Inf)
 
 cat(
-  "\nSeparate sentence-length diagnostics completed and frozen.\n",
+  "\nSentence-length diagnostics completed and frozen.\n",
   "Body sentences represented: ", sum(sentence_length_diagnostics$n_body_sentences), "\n",
   "Texts represented: ", nrow(sentence_length_diagnostics), "\n",
-  "Gemini included descriptively: yes\n",
-  "PMI measure family affected: no\n",
-  "Frozen output: ../measure_outputs/modul_7_sentence_length_diagnostics.rds\n",
+  "Gemini included: yes\n",
+  "PMI indices bundles affected: no\n",
+  "Frozen output: ", sentence_length_path, "\n",
   sep = ""
 )
-
 ```
+# MODULE-INDEPENDENT — Calculate and freeze lexical diagnostics for each target text related to neurological conditions diagnostics
 
-# MODUL 7.13 — Build Illustrative Within-Text Frequency–PMI Examples  valid table creation for Reporting Results
 ```{r}
-# MODUL 7.13 former 7.11b — Build Illustrative Within-Text Frequency–PMI Examples
 
-# MODUL 7.13 — Build Illustrative Within-Text Frequency–PMI Examples
+# MODULE-INDEPENDENT — Calculate and freeze lexical diagnostics for each target text related to neurological conditions diagnostics
 
-library(dplyr)
-library(purrr)
-
-x2_distributional_plausibility_bundle <- readRDS(
-  "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
+current_texts_parsed <- readRDS(
+  "../data_prep_CCP_output/current_texts_parsed.rds"
 )
 
-query_sufficient_statistics <- x2_distributional_plausibility_bundle$query_results |>
-  dplyr::select(query_id, corpus_total_N, marginal_frequencies)
+sentence_segment_table <- readRDS(
+  "M6_prep_outputs/modul_6_LSA_inputs.rds"
+)$sentence_segment_table
 
-frequency_pmi_model_summary <- within_text_frequency_pmi_models |>
-  dplyr::select(text_id, candidate_type, token_n_in_w, n_mwCombo, n_unique_freq)
+stopifnot(
+  is.data.frame(current_texts_parsed),
+  is.data.frame(sentence_segment_table),
+  all(
+    c(
+      "text_id",
+      "paragraph_id",
+      "sentence_id",
+      "token_id",
+      "token",
+      "lemma",
+      "pos",
+      "dep_rel",
+      "head_token_id"
+    ) %in% names(current_texts_parsed)
+  ),
+  all(c("text_id", "sentence_id") %in% names(sentence_segment_table))
+)
 
-frequency_pmi_example_pool <- pair_level_data |>
-  dplyr::left_join(query_sufficient_statistics, by = "query_id") |>
-  dplyr::mutate(
-    marginal_frequency_values = purrr::map_chr(
-      marginal_frequencies,
-      ~ paste(sprintf("%.3f", .x), collapse = " | ")
-    ),
-    expected_frequency = purrr::pmap_dbl(
-      list(marginal_frequencies, corpus_total_N, token_n_in_w),
-      \(m, N, n) {
-        if (length(m) == n && all(is.finite(m) & m > 0) && is.finite(N) & N > 0) {
-          exp(sum(log(m)) - (n - 1) * log(N))
-        } else {
-          NA_real_
-        }
-      }
-    ),
-    observed_expected_ratio = corpus_frequency / expected_frequency,
-    recomputed_pmi = log2(observed_expected_ratio)
-  )
+target_text_order <- c(
+  "HUMAN_BASELINE_001",
+  "BASIC_CHATGPT_NATIVE_001",
+  "BASIC_GEMINI_NATIVE_001",
+  "BASIC_CLAUDE_NATIVE_001"
+)
 
-frequency_pmi_examples <- dplyr::bind_rows(
-  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_min(corpus_frequency, n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Lowest joint frequency"),
-  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_min(abs(log_freq - median(log_freq)), n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Median joint frequency"),
-  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_max(corpus_frequency, n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Highest joint frequency"),
-  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_max(corpus_pmi, n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Highest PMI")
-) |>
-  dplyr::ungroup() |>
-  dplyr::left_join(frequency_pmi_model_summary, by = c("text_id", "candidate_type", "token_n_in_w")) |>
-  dplyr::select(
-    text_id, candidate_type, token_n_in_w, example_type, pmi_window,
-    corpus_frequency, marginal_frequency_values, expected_frequency,
-    corpus_pmi, recomputed_pmi, n_mwCombo
+content_pos <- c("NOUN", "PROPN", "VERB", "ADJ", "ADV")
+
+body_sentence_keys <- sentence_segment_table
+
+if ("segment_type" %in% names(body_sentence_keys)) {
+  body_sentence_keys <- body_sentence_keys |>
+    dplyr::filter(segment_type == "body")
+} else if ("sentence_type" %in% names(body_sentence_keys)) {
+  body_sentence_keys <- body_sentence_keys |>
+    dplyr::filter(sentence_type == "body")
+} else if ("is_body" %in% names(body_sentence_keys)) {
+  body_sentence_keys <- body_sentence_keys |>
+    dplyr::filter(is_body)
+}
+
+body_sentence_keys <- body_sentence_keys |>
+  dplyr::distinct(text_id, sentence_id)
+
+neurolinguistical_token_layer <- current_texts_parsed |>
+  dplyr::filter(text_id %in% target_text_order) |>
+  dplyr::semi_join(
+    body_sentence_keys,
+    by = c("text_id", "sentence_id")
   ) |>
-  dplyr::arrange(
-    text_id, candidate_type, token_n_in_w,
-    factor(example_type, c("Lowest joint frequency", "Median joint frequency", "Highest joint frequency", "Highest PMI"))
-  )
-
-stopifnot(all(abs(frequency_pmi_examples$corpus_pmi - frequency_pmi_examples$recomputed_pmi) < 1e-8, na.rm = TRUE))
-
-# Final table generation strictly containing intended columns and exact 0.xxx rounding
-illustrative_frequency_pmi_table <- frequency_pmi_examples |>
-  dplyr::select(-recomputed_pmi) |>
+  dplyr::filter(
+    !is.na(token),
+    token != "",
+    !is.na(pos),
+    !pos %in% c("PUNCT", "SYM")
+  ) |>
   dplyr::mutate(
-    dplyr::across(dplyr::any_of(c("token_n_in_w", "n_mwCombo", "corpus_frequency")), as.integer),
-    dplyr::across(dplyr::any_of(c("expected_frequency", "corpus_pmi")), ~ ifelse(is.na(.x), NA_character_, sprintf("%.3f", .x)))
+    token_form = stringr::str_to_lower(token),
+    token_length_letters = stringr::str_count(token, "\\p{L}")
+  ) |>
+  dplyr::filter(token_length_letters > 0L)
+
+neurolinguistical_diagnostics <- neurolinguistical_token_layer |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    n_word_tokens = dplyr::n(),
+    n_word_types = dplyr::n_distinct(token_form),
+    n_hapax = sum(table(token_form) == 1L),
+
+    token_length_letters_mean = mean(token_length_letters),
+    token_length_letters_sd = stats::sd(token_length_letters),
+    token_length_letters_median = stats::median(token_length_letters),
+
+    ttr = n_word_types / n_word_tokens,
+    brunet_index = n_word_tokens^(n_word_types^(-0.165)),
+    honore_statistic = dplyr::if_else(
+      n_word_types > 0L & n_hapax < n_word_types,
+      100 * log(n_word_tokens) /
+        (1 - n_hapax / n_word_types),
+      NA_real_
+    ),
+
+    n_content_words = sum(pos %in% content_pos),
+    content_density = n_content_words / n_word_tokens,
+
+    n_verbs = sum(pos == "VERB"),
+    verb_rate = n_verbs / n_word_tokens,
+
+    n_adjectives = sum(pos == "ADJ"),
+    adj_rate = n_adjectives / n_word_tokens,
+
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    text_label = dplyr::recode(
+      text_id,
+      HUMAN_BASELINE_001 = "Human",
+      BASIC_CHATGPT_NATIVE_001 = "ChatGPT",
+      BASIC_GEMINI_NATIVE_001 = "Gemini",
+      BASIC_CLAUDE_NATIVE_001 = "Claude"
+    )
+  ) |>
+  dplyr::arrange(match(text_id, target_text_order)) |>
+  dplyr::select(
+    text_id,
+    text_label,
+    n_word_tokens,
+    n_word_types,
+    n_hapax,
+    token_length_letters_mean,
+    token_length_letters_sd,
+    token_length_letters_median,
+    ttr,
+    brunet_index,
+    honore_statistic,
+    n_content_words,
+    content_density,
+    n_verbs,
+    verb_rate,
+    n_adjectives,
+    adj_rate
   )
 
-# Isolated data subset engineered precisely for your plotting requirements
-frequency_pmi_plot_data <- frequency_pmi_examples |>
-  dplyr::select(text_id, candidate_type, corpus_frequency, corpus_pmi)
-
-illustrative_frequency_pmi_table
-```
-# Note: n_mw_Combo=number of multiword combinations produced by the sliding-window logic within one target area
-
-
-# Modul 7.13a Illustrative frequency–PMI table created
-
-```{r}
-cat(
-  "\nIllustrative frequency–PMI table created:",
-  nrow(frequency_pmi_examples), "rows.\n"
+stopifnot(
+  nrow(neurolinguistical_diagnostics) == 4L,
+  !anyDuplicated(neurolinguistical_diagnostics$text_id),
+  setequal(
+    neurolinguistical_diagnostics$text_id,
+    target_text_order
+  ),
+  all(neurolinguistical_diagnostics$n_word_tokens > 0L),
+  all(neurolinguistical_diagnostics$n_word_types > 0L),
+  all(neurolinguistical_diagnostics$n_hapax >= 0L),
+  all(
+    neurolinguistical_diagnostics$n_hapax <=
+      neurolinguistical_diagnostics$n_word_types
+  ),
+  all(neurolinguistical_diagnostics$token_length_letters_mean > 0),
+  all(dplyr::between(neurolinguistical_diagnostics$ttr, 0, 1)),
+  all(
+    dplyr::between(
+      neurolinguistical_diagnostics$content_density,
+      0,
+      1
+    )
+  ),
+  all(
+    dplyr::between(
+      neurolinguistical_diagnostics$verb_rate,
+      0,
+      1
+    )
+  ),
+  all(
+    dplyr::between(
+      neurolinguistical_diagnostics$adj_rate,
+      0,
+      1
+    )
+  ),
+  all(is.finite(neurolinguistical_diagnostics$brunet_index))
 )
+
+neurolinguistical_diagnostics_path <- paste0(
+  "../measure_outputs/",
+  "modul_7_to_modul_8_neurolinguistical_diagnostics.rds"
+)
+
+saveRDS(
+  neurolinguistical_diagnostics,
+  neurolinguistical_diagnostics_path,
+  version = 3
+)
+
+neurolinguistical_diagnostics <- readRDS(
+  neurolinguistical_diagnostics_path
+)
+
+neurolinguistical_diagnostics_presentation <-
+  neurolinguistical_diagnostics |>
+  dplyr::mutate(
+    dplyr::across(
+      c(
+        n_word_tokens,
+        n_word_types,
+        n_hapax,
+        n_content_words,
+        n_verbs,
+        n_adjectives
+      ),
+      as.integer
+    ),
+    dplyr::across(
+      c(
+        token_length_letters_mean,
+        token_length_letters_sd,
+        token_length_letters_median,
+        ttr,
+        brunet_index,
+        honore_statistic,
+        content_density,
+        verb_rate,
+        adj_rate
+      ),
+      ~ ifelse(
+        is.na(.x),
+        NA_character_,
+        sprintf("%.3f", .x)
+      )
+    )
+  )
 
 print(
-  frequency_pmi_examples |>
-    dplyr::select(
-      text_id, candidate_type,
-      example_type, pmi_window,
-      corpus_frequency, corpus_pmi
-    ) |>
-    # Formats decimals to .xxx string representations cleanly for the print view
-    dplyr::mutate(
-      dplyr::across(
-        dplyr::any_of(c("expected_frequency", "corpus_pmi")), 
-        ~ ifelse(is.na(.x), NA_character_, sprintf("%.3f", .x))
-      )
-    ),
+  neurolinguistical_diagnostics_presentation,
   n = Inf,
   width = Inf
 )
 
+cat(
+  "\nNeurolinguistical diagnostics completed and frozen.\n",
+  "Target texts represented: ",
+  nrow(neurolinguistical_diagnostics),
+  "\n",
+  "Human included: yes\n",
+  "ChatGPT included: yes\n",
+  "Gemini included: yes\n",
+  "Claude included: yes\n",
+  "Token length counted in letters: yes\n",
+  "Frozen output: ",
+  neurolinguistical_diagnostics_path,
+  "\n",
+  sep = ""
+)
 ```
-#
+
+# # MODUL 7 FINAL — Verify the MODUL 7 to MODUL 8 handover
 
 ```{r}
+# MODUL 7 FINAL — Verify the MODUL 7 to MODUL 8 handover
 
-# Audit the 10 largest files in the complete project
-
-project_root <- ".."
-
-project_files <- list.files(
-  path = project_root,
-  recursive = TRUE,
-  full.names = TRUE,
-  all.files = TRUE,
-  no.. = TRUE
+modul_7_to_modul_8_paths <- c(
+  x2_indices_bundles =
+    "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds",
+  sentence_length_diagnostics =
+    "../measure_outputs/module_independent_sentence_length_diagnostics.rds",
+  neurolinguistical_diagnostics =
+    "../measure_outputs/modul_7_to_modul_8_neurolinguistical_diagnostics.rds"
 )
 
-top_10_largest_files <- tibble::tibble(
-  file = project_files,
-  size_bytes = file.info(project_files)$size,
-  is_directory = file.info(project_files)$isdir
-) |>
-  dplyr::filter(!is.na(size_bytes), !is_directory) |>
-  dplyr::mutate(
-    file = sub(paste0("^", normalizePath(project_root), "/?"), "", normalizePath(file)),
-    size_MiB = size_bytes / 1024^2,
-    github_status = dplyr::case_when(
-      size_MiB > 100 ~ "BLOCKED: over 100 MiB",
-      size_MiB > 50 ~ "WARNING: over 50 MiB",
-      TRUE ~ "OK"
-    )
-  ) |>
-  dplyr::arrange(dplyr::desc(size_bytes)) |>
-  dplyr::slice_head(n = 10L) |>
-  dplyr::select(file, size_MiB, github_status)
+stopifnot(all(file.exists(modul_7_to_modul_8_paths)))
 
-print(top_10_largest_files, n = 10L, width = Inf)
-  
+modul_7_x2_indices_bundles <- readRDS(
+  modul_7_to_modul_8_paths[["x2_indices_bundles"]]
+)
+
+modul_7_sentence_length_diagnostics <- readRDS(
+  modul_7_to_modul_8_paths[["sentence_length_diagnostics"]]
+)
+
+modul_7_neurolinguistical_diagnostics <- readRDS(
+  modul_7_to_modul_8_paths[["neurolinguistical_diagnostics"]]
+)
+
+required_x2_objects <- c(
+  "x2a_functor_candidates",
+  "x2b_sliding_windows",
+  "x2c_connector_sw",
+  "query_occurrences",
+  "query_inventory",
+  "query_results",
+  "enriched_occurrences",
+  "x2a_occurrences",
+  "x2b_occurrences",
+  "x2c_occurrences",
+  "mwCombo_by_text",
+  "text_level_diagnostics",
+  "measure_status",
+  "final_audit"
+)
+
+required_neurolinguistical_fields <- c(
+  "text_id",
+  "text_label",
+  "n_word_tokens",
+  "n_word_types",
+  "n_hapax",
+  "token_length_letters_mean",
+  "token_length_letters_sd",
+  "token_length_letters_median",
+  "ttr",
+  "brunet_index",
+  "honore_statistic",
+  "n_content_words",
+  "content_density",
+  "n_verbs",
+  "verb_rate",
+  "n_adjectives",
+  "adj_rate"
+)
+
+target_text_order <- c(
+  "HUMAN_BASELINE_001",
+  "BASIC_CHATGPT_NATIVE_001",
+  "BASIC_GEMINI_NATIVE_001",
+  "BASIC_CLAUDE_NATIVE_001"
+)
+
+stopifnot(
+  is.list(modul_7_x2_indices_bundles),
+  all(required_x2_objects %in% names(modul_7_x2_indices_bundles)),
+
+  is.data.frame(modul_7_sentence_length_diagnostics),
+  nrow(modul_7_sentence_length_diagnostics) == 4L,
+  !anyDuplicated(modul_7_sentence_length_diagnostics$text_id),
+  setequal(
+    modul_7_sentence_length_diagnostics$text_id,
+    target_text_order
+  ),
+
+  is.data.frame(modul_7_neurolinguistical_diagnostics),
+  all(
+    required_neurolinguistical_fields %in%
+      names(modul_7_neurolinguistical_diagnostics)
+  ),
+  nrow(modul_7_neurolinguistical_diagnostics) == 4L,
+  !anyDuplicated(modul_7_neurolinguistical_diagnostics$text_id),
+  setequal(
+    modul_7_neurolinguistical_diagnostics$text_id,
+    target_text_order
+  )
+)
+
+modul_7_to_modul_8_handover_manifest <- list(
+  x2_indices_bundles_path = unname(
+    modul_7_to_modul_8_paths[["x2_indices_bundles"]]
+  ),
+  sentence_length_diagnostics_path = unname(
+    modul_7_to_modul_8_paths[["sentence_length_diagnostics"]]
+  ),
+  neurolinguistical_diagnostics_path = unname(
+    modul_7_to_modul_8_paths[["neurolinguistical_diagnostics"]]
+  ),
+  sentence_length_diagnostics_texts =
+    modul_7_sentence_length_diagnostics$text_id,
+  neurolinguistical_diagnostics_texts =
+    modul_7_neurolinguistical_diagnostics$text_id,
+  gemini_x2_status = "not_calculated",
+  gemini_x2_exclusion_reason =
+    "excluded_modul_7_parser_reliability",
+  handover_passed = TRUE
+)
+
+modul_7_to_modul_8_handover_manifest_path <- paste0(
+  "../measure_outputs/",
+  "modul_7_to_modul_8_handover_manifest.rds"
+)
+
+saveRDS(
+  modul_7_to_modul_8_handover_manifest,
+  modul_7_to_modul_8_handover_manifest_path,
+  version = 3
+)
+
+cat(
+  "\nMODUL 7 to MODUL 8 handover verified and frozen.\n",
+  "MODUL 7 x2 indices bundles: ",
+  modul_7_to_modul_8_paths[["x2_indices_bundles"]],
+  "\n",
+  "Sentence-length diagnostics: ",
+  modul_7_to_modul_8_paths[["sentence_length_diagnostics"]],
+  "\n",
+  "Neurolinguistical diagnostics: ",
+  modul_7_to_modul_8_paths[["neurolinguistical_diagnostics"]],
+  "\n",
+  "Handover manifest: ",
+  modul_7_to_modul_8_handover_manifest_path,
+  "\n",
+  "Gemini in sentence-length diagnostics: yes\n",
+  "Gemini in neurolinguistical diagnostics: yes\n",
+  "Gemini in MODUL 7 x2 indices bundles: no\n",
+  sep = ""
+)
 ```
 
+# Temporary inspection cell
 
+```{r}
+current_texts_parsed <- readRDS(
+  "../data_prep_CCP_output/current_texts_parsed.rds"
+)
 
-
-
-
-
-
-
-
-
+names(current_texts_parsed)
+```
 
 The `echo: false` option disables the printing of code (only output is displayed).
