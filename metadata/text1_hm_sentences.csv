@@ -1,0 +1,33 @@
+text_id,source_type,model_family,model_id,paragraph_id,sentence_id,sentence_text
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S01,"Nicht zum ersten Mal hören wir, dass unsere Tätigkeiten in Zukunft von Maschinen ausgeführt werden und dass Maschinen als Arbeitskräfte bald in vielen Bereichen überflüssig sind."
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S02,"Die Entwicklung, deren Auswirkungen noch absehbar sind, wird als Digitalisierung bezeichnet."
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S03,"Schon jetzt ist es möglich, zahlreiche Arbeiten von Computern und Apparaten erledigen zu lassen."
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S04,"Da überrascht es gar nicht, dass der technische Fortschritt nicht nur positiv beurteilt wird."
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S05,"Ein mögliches Ereignis, vor dem sich viele Manschen fürchten, ist der Verlust des eigenen Arbeitsplatzes."
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S06,Werden wir also schon bald von Maschinen ersetzt?
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S07,Wird es nicht genügend Arbeitsplätze für alle geben?
+HUMAN_BASELINE_001,human,NA,NA,P01,P01_S08,Wie wird Arbeit in 30 Jahren aussehen?
+HUMAN_BASELINE_001,human,NA,NA,P02,P02_S01,"Bisher haben Maschinen und Geräte verschiedene Tätigkeiten übernommen, die als gefährlich oder sehr einfach galten."
+HUMAN_BASELINE_001,human,NA,NA,P02,P02_S02,"Außerdem hat sich die Automatisierung in der industriellen Produktion als sehr kosteneffizient erwiesen, was zu drastischen Veränderungen der Arbeitsplätze in dieser Branche geführt hat."
+HUMAN_BASELINE_001,human,NA,NA,P02,P02_S03,"Woran heutzutage kaum noch zweifelt, ist die Annahme, dass viele traditionelle Lebensläufe in naher Zukunft verschwinden werden."
+HUMAN_BASELINE_001,human,NA,NA,P02,P02_S04,"Schon jetzt gibt es Supermärkte ohne Kassierer, und am Flughafen kontrolliert ein Scanner unseren Reisepass."
+HUMAN_BASELINE_001,human,NA,NA,P02,P02_S05,"Ebenso haben wir erlebt, wie die Technologie unser Leben verändert hat: Beispielsweise sind Smartphones eine relativ neue Erfindung, und dennoch haben sie sich schnellstens zu einem unverzichtbaren Teil unseres Lebens entwickelt."
+HUMAN_BASELINE_001,human,NA,NA,P02,P02_S06,Die Vorbereitung eines schnellen und bezahlbaren Internet-Services hat unseren Medienkonsum geprägt und die Kommunikation heute über weite Entfernungen einfach und günstig gemacht.
+HUMAN_BASELINE_001,human,NA,NA,P03,P03_S01,"Wer die neue Technologie nutzt, kann morgens seinen Kaffee kochen lassen, während er unter der Dusche steht."
+HUMAN_BASELINE_001,human,NA,NA,P03,P03_S02,"Ein Saugroboter reinigt die Wohnung, während wir noch bei der Arbeit sind, und auf dem Weg nach Hause können wir schon mal die Heizung einschalten, damit das Wohnzimmer warm ist, wenn wir ankommen."
+HUMAN_BASELINE_001,human,NA,NA,P03,P03_S03,"Doch wenn wir auch weiterhin von den Vorteilen einer hoch entwickelten Technik profitieren wollen, müssen wir uns anpassen."
+HUMAN_BASELINE_001,human,NA,NA,P03,P03_S04,"Wer flexibel ist, wird neue Entwicklungen nutzen, anstatt von ihnen ersetzt zu werden."
+HUMAN_BASELINE_001,human,NA,NA,P04,P04_S01,"Der Fortschritt, dessen Neuerungen viele Arbeitsplätze überflüssig machen werden, führt auf der anderen Seite auch zu neuen Tätigkeiten und Berufsbildern."
+HUMAN_BASELINE_001,human,NA,NA,P04,P04_S02,"Letztlich hängt eine Neuerung immer auch vom Ideenreichtum der Menschen ab, was deren Beitrag unverzichtbar macht."
+HUMAN_BASELINE_001,human,NA,NA,P04,P04_S03,Laut einem Bericht der Firma Dell Technologies sind 85% der Arbeitsplätze im Jahr 2030 bisher noch nicht einmal erfunden.
+HUMAN_BASELINE_001,human,NA,NA,P04,P04_S04,"Wahrscheinlich wird sich die Art der Arbeit verändern, was neue, speziell menschliche Qualitäten erforderlich macht."
+HUMAN_BASELINE_001,human,NA,NA,P04,P04_S05,"Zu den Fähigkeiten, um die es in Zukunft verstärkt gehen wird, gehören beispielsweise soziale und emotionale Intelligenz, Empathie, kritisches Denken und Improvisationsvermögen."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S01,"Natürlich bringt eine solche Entwicklung nicht nur Möglichkeiten, sondern auch Risiken mit sich, weil die Arbeit und die Fähigkeiten neu bewertet und organisiert werden."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S02,"Was Maschinen leisten können, ist zumindest bisher klar begrenzt."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S03,"Dies gilt insbesondere für bestimmte Tätigkeiten, bei denen abstraktes problemlösendes Denken erforderlich ist."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S04,"Auf der anderen Seite werden wir wahrscheinlich in Zukunft seltener mit einfachen körperlichen oder wiederkehrenden Tätigkeiten beschäftigt sein, da diese viel leichter automatisiert werden können."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S05,"Obwohl es schwierig ist vorherzusagen, wie die Berufe der Zukunft aussehen werden, lässt sich doch vermuten, dass Gesundheitsberufe, IT-Berufe und technische Berufe, z.B."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S06,"im Energiesektor, sehr gefragt werden."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S07,"Bereits in den letzten zwei Jahrhunderten sind zwar immer wieder Arbeitsplätze verschwunden, die Arbeit an sich existiert aber weiter."
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S08,So wird wohl auch in Zukunft der Erfolg im Beruf stark von der Bereitschaft zu Veränderung und Anpassung abhängen.
+HUMAN_BASELINE_001,human,NA,NA,P05,P05_S09,"Kreativität, Einfühlungsvermögen, Sozialkompetenz und Erfindergeist sind etwas, womit auch weiterhin gute Perspektiven geschaffen werden."

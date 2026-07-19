@@ -1,0 +1,12 @@
+metric,value
+n_input_documents,2004
+n_input_sentences,5252
+n_parsed_source_sentences,5252
+n_parsed_tokens,108519
+n_lsa_tokens,56289
+n_source_sentences_resplit_by_udpipe,314
+n_sentences_without_tokens,0
+n_sentences_without_lsa_terms,5
+n_documents_without_lsa_terms,0
+n_duplicated_token_uids,0
+n_tokens_without_hierarchy,0

@@ -1,0 +1,5 @@
+text_id,n_prescribed_sections,n_detected_sections,all_sections_present,section_order_correct,n_paragraphs_section_1,n_paragraphs_section_2,n_paragraphs_section_3,n_empty_sections,n_paragraphs_total,n_mapped_paragraphs,n_unmapped_paragraphs,n_ambiguous_paragraphs,n_outside_section_paragraphs,n_missing_sections,n_duplicated_sections,section_mapping_valid
+BASIC_CHATGPT_NATIVE_001,3,3,TRUE,TRUE,1,1,2,0,4,4,0,0,0,0,0,TRUE
+BASIC_CLAUDE_NATIVE_001,3,3,TRUE,TRUE,1,1,1,0,3,3,0,0,0,0,0,TRUE
+BASIC_GEMINI_NATIVE_001,3,3,TRUE,TRUE,1,1,1,0,3,3,0,0,0,0,0,TRUE
+HUMAN_BASELINE_001,3,3,TRUE,TRUE,1,2,2,0,5,5,0,0,0,0,0,TRUE

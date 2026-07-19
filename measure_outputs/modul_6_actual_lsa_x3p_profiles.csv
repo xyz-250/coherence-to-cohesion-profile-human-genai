@@ -1,0 +1,5 @@
+text_id,model,x3p_adjacent_paragraph_similarity_mean,n_x3p_adjacent_paragraph_pairs
+BASIC_CHATGPT_NATIVE_001,chatgpt_native,0.27470532793761154,3
+BASIC_CLAUDE_NATIVE_001,claude_native,0.25221437586375883,2
+BASIC_GEMINI_NATIVE_001,gemini_native,0.20468775761168442,2
+HUMAN_BASELINE_001,human,0.2872803977961476,4

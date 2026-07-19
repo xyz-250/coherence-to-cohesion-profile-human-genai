@@ -1,0 +1,1614 @@
+---
+title: "CCP_generation"
+author: "izb."
+format: html
+editor: visual
+---
+
+# MODUL 5b) 0 — Path diagnostic
+
+```{r, eval=FALSE}
+# ============================================================
+# MODUL 5b0a — Path diagnostic
+# ============================================================
+
+message("Current working directory:")
+getwd()
+
+message("Files/folders visible here:")
+list.files()
+
+message("Does data_prep_CCP_output exist here?")
+dir.exists("data_prep_CCP_output")
+
+message("Does data_prep_CCP_output exist one folder above?")
+dir.exists("../data_prep_CCP_output")
+
+message("Searching for current_texts_parsed.rds below current folder:")
+list.files(
+  ".",
+  pattern = "current_texts_parsed\\.rds$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+message("Searching for current_texts_parsed.rds one folder above:")
+list.files(
+  "..",
+  pattern = "current_texts_parsed\\.rds$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+```
+
+# MODUL 5b 1 — Setup
+
+```{r}
+
+# MODUL 5b0 — Setup and paths
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(tidyr)
+
+# Current file is inside:
+# CC_Profile_HvsLM/CCP_generation_pipeL/
+
+# Frozen Part B inputs are one folder above:
+data_prep_dir <- "../data_prep_CCP_output"
+
+# MODUL 5b outputs stay inside the current Part B folder:
+module_output_dir <- "measure_outputs"
+
+dir.create(
+  module_output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+message("Working directory: ", getwd())
+message("Using frozen input folder: ", normalizePath(data_prep_dir))
+message("Using MODUL 5b output folder: ", normalizePath(module_output_dir))
+```
+
+# MODUL 5b 2 — Load frozen Part B inputs
+
+```{r}
+
+# MODUL 5b1 — Load frozen Part B inputs
+
+
+current_texts_parsed_path <- file.path(
+  data_prep_dir,
+  "current_texts_parsed.rds"
+)
+
+ims_psychometric_lexicon_path <- file.path(
+  data_prep_dir,
+  "ims_psychometric_lexicon_clean.rds"
+)
+
+if (!file.exists(current_texts_parsed_path)) {
+  stop("Missing file: ", current_texts_parsed_path)
+}
+
+if (!file.exists(ims_psychometric_lexicon_path)) {
+  stop("Missing file: ", ims_psychometric_lexicon_path)
+}
+
+current_texts_parsed <- readRDS(
+  current_texts_parsed_path
+)
+
+ims_psychometric_lexicon_clean <- readRDS(
+  ims_psychometric_lexicon_path
+)
+
+dplyr::glimpse(current_texts_parsed)
+dplyr::glimpse(ims_psychometric_lexicon_clean)
+```
+# MODUL 5b 3 — Column checks and IMS lemma integrity
+
+```{r}
+# ============================================================
+# MODUL 5b2 — Column checks and IMS lemma integrity
+# ============================================================
+
+# Ensure text_id exists in parsed token-ID data
+if (!"text_id" %in% names(current_texts_parsed)) {
+  if ("doc_id" %in% names(current_texts_parsed)) {
+    current_texts_parsed <- current_texts_parsed |>
+      dplyr::rename(text_id = doc_id)
+  } else {
+    stop("No text_id or doc_id column found in current_texts_parsed.")
+  }
+}
+
+# Ensure POS column exists
+if (!"pos" %in% names(current_texts_parsed)) {
+  if ("upos" %in% names(current_texts_parsed)) {
+    current_texts_parsed <- current_texts_parsed |>
+      dplyr::mutate(pos = upos)
+  } else {
+    stop("No pos or upos column found in current_texts_parsed.")
+  }
+}
+
+# Ensure lemma exists in parsed token-ID data
+if (!"lemma" %in% names(current_texts_parsed)) {
+  stop("No lemma column found in current_texts_parsed.")
+}
+
+# Ensure lemma exists in IMS lexicon
+if (!"lemma" %in% names(ims_psychometric_lexicon_clean)) {
+  stop("No lemma column found in ims_psychometric_lexicon_clean.")
+}
+
+# Check required IMS psycholinguistic-related columns
+required_ims_cols <- c(
+  "concreteness",
+  "imageability",
+  "abstractness_proxy"
+)
+
+missing_ims_cols <- setdiff(
+  required_ims_cols,
+  names(ims_psychometric_lexicon_clean)
+)
+
+if (length(missing_ims_cols) > 0) {
+  stop(
+    paste(
+      "Missing IMS columns:",
+      paste(missing_ims_cols, collapse = ", ")
+    )
+  )
+}
+
+# Basic row-count check
+message("Rows in parsed token-ID layer: ", nrow(current_texts_parsed))
+message("Rows in IMS psycholinguistic lexicon: ", nrow(ims_psychometric_lexicon_clean))
+
+# Check IMS lemma uniqueness
+ims_lemma_check <- ims_psychometric_lexicon_clean |>
+  dplyr::summarise(
+    n_rows = dplyr::n(),
+    n_unique_lemmas = dplyr::n_distinct(lemma),
+    n_duplicate_lemma_rows = n_rows - n_unique_lemmas
+  )
+
+ims_lemma_check
+
+if (ims_lemma_check$n_duplicate_lemma_rows > 0) {
+  stop("IMS lexicon contains duplicate lemma rows. Join would be unsafe.")
+}
+
+message("IMS lemma check passed: one row per lemma.")
+```
+
+# Modul 5b 4 - IMS join - Prepare parsed lemmas for IMS join
+
+```{r}
+# MODUL 5b3 — Prepare parsed lemmas for IMS join
+
+
+parsed_tokens_5b <- current_texts_parsed |>
+  dplyr::mutate(
+    token_clean = stringr::str_to_lower(
+      stringr::str_squish(as.character(token))
+    ),
+    lemma_clean = stringr::str_to_lower(
+      stringr::str_squish(as.character(lemma))
+    ),
+    
+    # Remove lightweight Markdown / formatting artifacts
+    token_clean = stringr::str_replace_all(token_clean, "\\*+", ""),
+    lemma_clean = stringr::str_replace_all(lemma_clean, "\\*+", ""),
+    
+    # Remove remaining leading/trailing non-letter artifacts
+    token_clean = stringr::str_replace_all(
+      token_clean,
+      "^[^[:alpha:]äöüÄÖÜß]+|[^[:alpha:]äöüÄÖÜß]+$",
+      ""
+    ),
+    lemma_clean = stringr::str_replace_all(
+      lemma_clean,
+      "^[^[:alpha:]äöüÄÖÜß]+|[^[:alpha:]äöüÄÖÜß]+$",
+      ""
+    ),
+    
+    pos = stringr::str_to_upper(as.character(pos)),
+    
+    # Helper flags for later diagnostics and y1 filtering
+    is_blank_lemma_clean = is.na(lemma_clean) | lemma_clean == "",
+    is_x_pos = pos == "X"
+  )
+
+dplyr::glimpse(parsed_tokens_5b)
+
+parsed_tokens_5b |>
+  dplyr::count(text_id, pos) |>
+  dplyr::arrange(text_id, dplyr::desc(n))
+
+parsed_tokens_5b |>
+  dplyr::filter(is_blank_lemma_clean | is_x_pos) |>
+  dplyr::count(
+    text_id,
+    pos,
+    is_blank_lemma_clean,
+    is_x_pos,
+    sort = TRUE,
+    name = "n"
+  )
+```
+
+# Modul 5b 5 — Attach psycholinguistic-related lexical values to the parsed token-ID layer
+
+```{r}
+# ============================================================
+# MODUL 5b4 — Attach psycholinguistic-related lexical values
+#              to the parsed token-ID layer
+# ============================================================
+
+n_tokens_before_join <- nrow(parsed_tokens_5b)
+
+token_psycholinguistic_layer <- parsed_tokens_5b |>
+  dplyr::left_join(
+    ims_psychometric_lexicon_clean,
+    by = c("lemma_clean" = "lemma")
+  )
+
+n_tokens_after_join <- nrow(token_psycholinguistic_layer)
+
+if (n_tokens_before_join != n_tokens_after_join) {
+  stop(
+    paste(
+      "Join problem: token rows changed from",
+      n_tokens_before_join,
+      "to",
+      n_tokens_after_join
+    )
+  )
+}
+
+message("Join check passed: token rows unchanged after IMS join.")
+
+token_psycholinguistic_layer |>
+  dplyr::summarise(
+    n_tokens = dplyr::n(),
+    n_with_concreteness = sum(!is.na(concreteness)),
+    n_with_imageability = sum(!is.na(imageability)),
+    n_with_abstractness_proxy = sum(!is.na(abstractness_proxy)),
+    n_with_any_psycholinguistic_value = sum(
+      !is.na(concreteness) |
+        !is.na(imageability) |
+        !is.na(abstractness_proxy)
+    ),
+    coverage_any_psycholinguistic_value =
+      n_with_any_psycholinguistic_value / n_tokens
+  )
+```
+
+# MODUL 5b 6 — Descriptive token and sentence statistics
+
+```{r}
+# MODUL 5b5 — Descriptive token and sentence statistics
+# This creates a separate descriptive-statistics table.
+# It is not merged into the CCP profile.
+
+descriptive_text_stats_5b <- parsed_tokens_5b |>
+  dplyr::mutate(
+    is_word = !pos %in% c("PUNCT", "SYM"),
+    word_length_chars = dplyr::if_else(
+      is_word,
+      stringr::str_length(token_clean),
+      NA_integer_
+    )
+  ) |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    n_tokens_total = dplyr::n(),
+    n_words_no_punct = sum(is_word, na.rm = TRUE),
+    
+    n_surface_types = dplyr::n_distinct(token_clean[is_word]),
+    n_lemma_types = dplyr::n_distinct(lemma_clean[is_word]),
+    
+    token_type_ratio = dplyr::if_else(
+      n_words_no_punct > 0,
+      n_surface_types / n_words_no_punct,
+      NA_real_
+    ),
+    
+    lemma_type_ratio = dplyr::if_else(
+      n_words_no_punct > 0,
+      n_lemma_types / n_words_no_punct,
+      NA_real_
+    ),
+    
+    mean_word_length_chars = mean(
+      word_length_chars,
+      na.rm = TRUE
+    ),
+    
+    n_sentences = dplyr::n_distinct(sentence_id),
+    
+    mean_sentence_length_words = dplyr::if_else(
+      n_sentences > 0,
+      n_words_no_punct / n_sentences,
+      NA_real_
+    ),
+    
+    .groups = "drop"
+  )
+
+descriptive_text_stats_5b
+```
+# MODUL 5b 7 — Save descriptive text statistics
+
+```{r}
+# MODUL 5b7 — Save descriptive text statistics
+# This saves the descriptive statistics separately from the CCP profile.
+
+saveRDS(
+  descriptive_text_stats_5b,
+  file.path(module_output_dir, "descriptive_text_stats_5b.rds")
+)
+
+readr::write_csv(
+  descriptive_text_stats_5b,
+  file.path(module_output_dir, "descriptive_text_stats_5b.csv")
+)
+
+message("Saved: ", file.path(module_output_dir, "descriptive_text_stats_5b.rds"))
+message("Saved: ", file.path(module_output_dir, "descriptive_text_stats_5b.csv"))
+```
+
+
+# MODUL 5b 8 new — Optional diagnostic: IMS coverage by text
+
+```{r}
+# MODUL 5b6 — Optional diagnostic: IMS coverage by text
+# This diagnostic uses the same active y1 logic planned for y1 generation.
+
+token_psycholinguistic_layer |>
+  dplyr::mutate(
+    use_for_y1 = !pos %in% c("PUNCT", "SYM", "NUM", "X") &
+      !is.na(lemma_clean) &
+      lemma_clean != "",
+    
+    has_psycholinguistic_value =
+      !is.na(concreteness) &
+      !is.na(imageability) &
+      !is.na(abstractness_proxy)
+  ) |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    n_tokens_total = dplyr::n(),
+    n_tokens_for_y1 = sum(use_for_y1, na.rm = TRUE),
+    n_matched_for_y1 = sum(has_psycholinguistic_value & use_for_y1, na.rm = TRUE),
+    coverage_y1 = dplyr::if_else(
+      n_tokens_for_y1 > 0,
+      n_matched_for_y1 / n_tokens_for_y1,
+      NA_real_
+    ),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(text_id)
+```
+
+# MODUL 5b 9 — Save token-level psycholinguistic layer
+
+```{r}
+# MODUL 5b9 — Save token-level psycholinguistic layer
+# This saves the full parsed token-ID layer after the IMS join.
+# It preserves matched and unmatched tokens, blank lemmas, X tags,
+# POS/dependency information, and IMS values where available.
+
+saveRDS(
+  token_psycholinguistic_layer,
+  file.path(module_output_dir, "token_psycholinguistic_layer.rds")
+)
+
+readr::write_csv(
+  token_psycholinguistic_layer,
+  file.path(module_output_dir, "token_psycholinguistic_layer.csv")
+)
+
+message("Saved: ", file.path(module_output_dir, "token_psycholinguistic_layer.rds"))
+message("Saved: ", file.path(module_output_dir, "token_psycholinguistic_layer.csv"))
+
+```
+
+# MODUL 5b10 — Helper function
+
+```{r}
+
+# MODUL 5b10 — Helper function
+# This helper avoids NaN when all values are missing.
+
+safe_mean <- function(x) {
+  if (length(x) == 0 || all(is.na(x))) {
+    return(NA_real_)
+  }
+  
+  mean(x, na.rm = TRUE)
+}
+```
+
+# MODUL 5b 11 — Computes y1
+This will create the active y1 token layer and compute:
+
+y1_n_lexical_tokens
+y1_n_normed
+y1_norm_coverage
+y1_mean_concreteness
+y1_mean_imageability
+y1_mean_abstractness_proxy
+
+Then:
+
+MODUL 5b12 — Compute y2, y3, y6
+MODUL 5b13 — Merge final MODUL 5b profile indices
+MODUL 5b14 — Save final MODUL 5b output
+
+The final MODUL 5b output will be:
+
+measure_outputs/ccp_module_5b_tokens.rds
+measure_outputs/ccp_module_5b_tokens.csv
+What remains after MODUL 5b to finish the CCP
+
+MODUL 5c — Compute y4 paragraph overlap
+MODUL 5d — Compute coherence x-side: x1, x2a, x2b, x3, x4
+MODUL 5e — Merge 5b + 5c + 5d into final ccp_profile_table
+MODUL 6 — Human–LLM comparison, delta vectors, plots, interpretation
+
+```{r}
+# MODUL 5b11 — Compute y1
+# y1 is the first lexical/psycholinguistic layer of the CCP.
+#
+# What is calculated?
+# For each text, we calculate mean concreteness, imageability,
+# and abstractness_proxy.
+#
+# How is it calculated?
+# Step 1:
+# We first define the active parsed lemma layer.
+# This contains the lemmas that are meaningful candidates for
+# psycholinguistic norm assignment.
+#
+# Step 2:
+# From this active layer, we keep only those tokens that actually
+# received complete IMS psycholinguistic values.
+#
+# Therefore:
+# y1 is calculated only over the norm-assigned part of the active
+# parsed lemma layer, which is approximately 80% in this dataset.
+#
+# Missing IMS values remain NA.
+# They are not treated as zero.
+
+y1_active_tokens <- token_psycholinguistic_layer |>
+  dplyr::filter(
+    !pos %in% c("PUNCT", "SYM", "NUM", "X"),
+    !is.na(lemma_clean),
+    lemma_clean != ""
+  )
+
+y1_normed_tokens <- y1_active_tokens |>
+  dplyr::filter(
+    !is.na(concreteness),
+    !is.na(imageability),
+    !is.na(abstractness_proxy)
+  )
+
+y1_coverage <- y1_active_tokens |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y1_n_lexical_tokens = dplyr::n(),
+    .groups = "drop"
+  ) |>
+  dplyr::left_join(
+    y1_normed_tokens |>
+      dplyr::group_by(text_id) |>
+      dplyr::summarise(
+        y1_n_normed = dplyr::n(),
+        .groups = "drop"
+      ),
+    by = "text_id"
+  ) |>
+  dplyr::mutate(
+    y1_n_normed = dplyr::if_else(
+      is.na(y1_n_normed),
+      0L,
+      y1_n_normed
+    ),
+    y1_norm_coverage = dplyr::if_else(
+      y1_n_lexical_tokens > 0,
+      y1_n_normed / y1_n_lexical_tokens,
+      NA_real_
+    )
+  )
+
+y1_values <- y1_normed_tokens |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y1_mean_concreteness = safe_mean(concreteness),
+    y1_mean_imageability = safe_mean(imageability),
+    y1_mean_abstractness_proxy = safe_mean(abstractness_proxy),
+    .groups = "drop"
+  )
+
+y1_profile <- y1_coverage |>
+  dplyr::left_join(
+    y1_values,
+    by = "text_id"
+  ) |>
+  dplyr::arrange(text_id)
+
+# Display the first y1 CCP layer as a table.
+
+y1_profile
+```
+# Optional noun concreteness profile
+# This optional sub-layer looks only at nouns. 
+ 
+```{r}
+# MODUL 5b11b — Optional noun concreteness profile
+# This optional sub-layer looks only at nouns.
+#
+# What is calculated?
+# For each text, we calculate how concrete and imageable the noun layer is.
+#
+# How is it calculated?
+# Step 1:
+# We take the active y1 token layer.
+#
+# Step 2:
+# We keep only common nouns with POS tag NOUN.
+# Proper names are not included here because they often behave differently
+# in psycholinguistic norm dictionaries.
+#
+# Step 3:
+# We keep only nouns that received complete IMS values.
+#
+# The result shows whether the noun layer of a text is more concrete,
+# more imageable, or more abstract.
+
+y1_noun_tokens <- y1_active_tokens |>
+  dplyr::filter(
+    pos == "NOUN"
+  )
+
+y1_noun_normed_tokens <- y1_noun_tokens |>
+  dplyr::filter(
+    !is.na(concreteness),
+    !is.na(imageability),
+    !is.na(abstractness_proxy)
+  )
+
+y1_noun_coverage <- y1_noun_tokens |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y1_noun_n_tokens = dplyr::n(),
+    .groups = "drop"
+  ) |>
+  dplyr::left_join(
+    y1_noun_normed_tokens |>
+      dplyr::group_by(text_id) |>
+      dplyr::summarise(
+        y1_noun_n_normed = dplyr::n(),
+        .groups = "drop"
+      ),
+    by = "text_id"
+  ) |>
+  dplyr::mutate(
+    y1_noun_n_normed = dplyr::if_else(
+      is.na(y1_noun_n_normed),
+      0L,
+      y1_noun_n_normed
+    ),
+    y1_noun_norm_coverage = dplyr::if_else(
+      y1_noun_n_tokens > 0,
+      y1_noun_n_normed / y1_noun_n_tokens,
+      NA_real_
+    )
+  )
+
+y1_noun_values <- y1_noun_normed_tokens |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y1_noun_mean_concreteness = safe_mean(concreteness),
+    y1_noun_median_concreteness = median(concreteness, na.rm = TRUE),
+    y1_noun_q25_concreteness = quantile(concreteness, 0.25, na.rm = TRUE),
+    y1_noun_q75_concreteness = quantile(concreteness, 0.75, na.rm = TRUE),
+    y1_noun_mean_imageability = safe_mean(imageability),
+    y1_noun_mean_abstractness_proxy = safe_mean(abstractness_proxy),
+    .groups = "drop"
+  )
+
+y1_noun_profile <- y1_noun_coverage |>
+  dplyr::left_join(
+    y1_noun_values,
+    by = "text_id"
+  ) |>
+  dplyr::arrange(text_id)
+
+# Display the optional noun-level y1 profile.
+
+y1_noun_profile
+```
+# MODUL 5b11c — y1 overview table for inspection
+
+```{r}
+# MODUL 5b11c — y1 overview table for inspection
+# This table combines the general y1 profile and the noun-only y1 sub-layer.
+#
+# What is calculated?
+# For each text, we display:
+# - general y1 coverage and means
+# - noun-only y1 coverage and means
+# - the difference between noun-level and general concreteness/imageability
+#
+# How is it calculated?
+# The table joins y1_profile and y1_noun_profile by text_id.
+# Then it calculates:
+# noun_minus_general_concreteness =
+#   y1_noun_mean_concreteness - y1_mean_concreteness
+#
+# noun_minus_general_imageability =
+#   y1_noun_mean_imageability - y1_mean_imageability
+#
+# Positive values mean:
+# the noun layer is more concrete/imageable than the general y1 layer.
+
+y1_overview_table <- y1_profile |>
+  dplyr::select(
+    text_id,
+    y1_norm_coverage,
+    y1_mean_concreteness,
+    y1_mean_imageability,
+    y1_mean_abstractness_proxy
+  ) |>
+  dplyr::left_join(
+    y1_noun_profile |>
+      dplyr::select(
+        text_id,
+        y1_noun_norm_coverage,
+        y1_noun_mean_concreteness,
+        y1_noun_median_concreteness,
+        y1_noun_q25_concreteness,
+        y1_noun_q75_concreteness,
+        y1_noun_mean_imageability,
+        y1_noun_mean_abstractness_proxy
+      ),
+    by = "text_id"
+  ) |>
+  dplyr::mutate(
+    noun_minus_general_concreteness =
+      y1_noun_mean_concreteness - y1_mean_concreteness,
+    
+    noun_minus_general_imageability =
+      y1_noun_mean_imageability - y1_mean_imageability
+  ) |>
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 3)
+    )
+  ) |>
+  dplyr::arrange(text_id)
+
+print(y1_overview_table, width = Inf)
+```
+# Preliminary Note: 
+The optional noun-level y1 sub-layer confirms the general y1 pattern. While noun norm coverage is highly comparable across all texts, the human baseline shows the highest noun concreteness values, both in the mean and in the median. This suggests that the human text contains a more concrete referential noun layer than the LLM-generated texts. 
+
+```{r}
+View(y1_overview_table)
+print(y1_overview_table, width = Inf)
+```
+# MODUL 5b12 — Compute y2, y3, y6: This cell calculates the remaining token/POS-based y-side indices.
+
+```{r}
+# MODUL 5b12 — Compute y2, y3, y6
+# This cell calculates the remaining token/POS-based y-side indices.
+#
+# y2 = content-word / function-word ratio
+# Content words are NOUN, PROPN, VERB, ADJ, ADV.
+# Function words are ADP, CCONJ, SCONJ, DET, PRON, AUX, PART.
+#
+# y3 = noun / pronoun ratio
+# Nouns are NOUN and PROPN.
+# Pronouns are PRON.
+#
+# y6 = function-word subtype distribution
+# This shows how the function words are distributed across:
+# ADP, CCONJ, SCONJ, DET, PRON, AUX, PART.
+#
+# X tokens are not manually repaired.
+# They are counted separately as n_x_tokens for transparency.
+
+content_pos <- c(
+  "NOUN",
+  "PROPN",
+  "VERB",
+  "ADJ",
+  "ADV"
+)
+
+function_pos <- c(
+  "ADP",
+  "CCONJ",
+  "SCONJ",
+  "DET",
+  "PRON",
+  "AUX",
+  "PART"
+)
+
+token_pos_profile <- parsed_tokens_5b |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    n_tokens_total = dplyr::n(),
+    n_words_no_punct = sum(!pos %in% c("PUNCT", "SYM"), na.rm = TRUE),
+    
+    n_content = sum(pos %in% content_pos, na.rm = TRUE),
+    n_function = sum(pos %in% function_pos, na.rm = TRUE),
+    
+    n_nouns = sum(pos %in% c("NOUN", "PROPN"), na.rm = TRUE),
+    n_pronouns = sum(pos == "PRON", na.rm = TRUE),
+    
+    n_x_tokens = sum(pos == "X", na.rm = TRUE),
+    
+    y2_content_function_ratio = dplyr::if_else(
+      n_function > 0,
+      n_content / n_function,
+      NA_real_
+    ),
+    
+    y3_noun_pronoun_ratio = dplyr::if_else(
+      n_pronouns > 0,
+      n_nouns / n_pronouns,
+      NA_real_
+    ),
+    
+    y6_prop_adp = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "ADP", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    y6_prop_cconj = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "CCONJ", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    y6_prop_sconj = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "SCONJ", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    y6_prop_det = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "DET", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    y6_prop_pron = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "PRON", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    y6_prop_aux = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "AUX", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    y6_prop_part = dplyr::if_else(
+      n_function > 0,
+      sum(pos == "PART", na.rm = TRUE) / n_function,
+      NA_real_
+    ),
+    
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(text_id)
+
+# Display the token/POS-based y-side profile.
+
+token_pos_profile
+```
+# # MODUL 5b13 — Length-normalized y-side 
+
+```{r}
+# MODUL 5b13 — Length-normalized y-side inspection table
+# This table helps us compare texts of different lengths.
+#
+# What is calculated?
+# We calculate rates per 100 non-punctuation words for:
+# - content words
+# - function words
+# - nouns
+# - pronouns
+# - SCONJ and CCONJ
+# - X tokens
+#
+# How is it calculated?
+# Each count is divided by n_words_no_punct and multiplied by 100.
+# This makes the values easier to compare across texts of different lengths.
+#
+# The original ratios y2 and y3 are kept.
+# Additional log-ratios are added as more stable modeling values.
+
+token_pos_length_table <- token_pos_profile |>
+  dplyr::mutate(
+    content_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * n_content / n_words_no_punct,
+      NA_real_
+    ),
+    
+    function_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * n_function / n_words_no_punct,
+      NA_real_
+    ),
+    
+    noun_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * n_nouns / n_words_no_punct,
+      NA_real_
+    ),
+    
+    pronoun_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * n_pronouns / n_words_no_punct,
+      NA_real_
+    ),
+    
+    x_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * n_x_tokens / n_words_no_punct,
+      NA_real_
+    ),
+    
+    sconj_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * (y6_prop_sconj * n_function) / n_words_no_punct,
+      NA_real_
+    ),
+    
+    cconj_per_100_words = dplyr::if_else(
+      n_words_no_punct > 0,
+      100 * (y6_prop_cconj * n_function) / n_words_no_punct,
+      NA_real_
+    ),
+    
+    connective_per_100_words = sconj_per_100_words + cconj_per_100_words,
+    
+    y2_log_content_function_ratio = log(
+      (n_content + 0.5) / (n_function + 0.5)
+    ),
+    
+    y3_log_noun_pronoun_ratio = log(
+      (n_nouns + 0.5) / (n_pronouns + 0.5)
+    )
+  ) |>
+  dplyr::select(
+    text_id,
+    n_words_no_punct,
+    content_per_100_words,
+    function_per_100_words,
+    noun_per_100_words,
+    pronoun_per_100_words,
+    y2_content_function_ratio,
+    y2_log_content_function_ratio,
+    y3_noun_pronoun_ratio,
+    y3_log_noun_pronoun_ratio,
+    sconj_per_100_words,
+    cconj_per_100_words,
+    connective_per_100_words,
+    x_per_100_words
+  ) |>
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 3)
+    )
+  )
+
+print(token_pos_length_table, width = Inf)
+```
+# MODUL 5b 14 — Compute y3b and y3c
+
+```{r}
+# MODUL 5b14 — Compute y3a, y3b, and y3c
+# This cell calculates the noun/pronoun reference layer.
+#
+# y3a = whole-text noun/pronoun ratio.
+# It compares all nouns/proper nouns in the text with all pronouns in the text.
+#
+# y3b = adjacent sentence noun-pronoun transition.
+# It compares nouns in sentence S_i with pronouns in sentence S_i+1.
+#
+# y3c = longer paragraph-internal noun-pronoun transition.
+# It compares nouns in earlier sentences with pronouns in later sentences
+# inside the same paragraph, but starts at distance 2:
+# S1 -> S3, S1 -> S4, S1 -> S5
+# S2 -> S4, S2 -> S5
+# etc.
+#
+# Important:
+# y3c excludes distance 1 because distance 1 is already measured by y3b.
+#
+# This is not full coreference resolution.
+# It is a structural noun/pronoun transition proxy.
+
+max_sentence_distance <- 5
+
+# y3a — whole-text noun/pronoun ratio
+
+y3a_profile <- token_pos_profile |>
+  dplyr::select(
+    text_id,
+    y3a_n_nouns = n_nouns,
+    y3a_n_pronouns = n_pronouns,
+    y3a_noun_pronoun_ratio = y3_noun_pronoun_ratio
+  ) |>
+  dplyr::mutate(
+    y3a_log_noun_pronoun_ratio = log(
+      (y3a_n_nouns + 0.5) / (y3a_n_pronouns + 0.5)
+    )
+  )
+
+# Create one row per sentence.
+# For each sentence, we count:
+# - words without punctuation/symbols
+# - nouns/proper nouns
+# - pronouns
+
+sentence_reference_table <- parsed_tokens_5b |>
+  dplyr::mutate(
+    paragraph_order_key = readr::parse_number(as.character(paragraph_id)),
+    sentence_order_key = readr::parse_number(as.character(sentence_id))
+  ) |>
+  dplyr::group_by(
+    text_id,
+    paragraph_id,
+    sentence_id,
+    paragraph_order_key,
+    sentence_order_key
+  ) |>
+  dplyr::summarise(
+    n_words_no_punct = sum(!pos %in% c("PUNCT", "SYM"), na.rm = TRUE),
+    n_nouns = sum(pos %in% c("NOUN", "PROPN"), na.rm = TRUE),
+    n_pronouns = sum(pos == "PRON", na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::group_by(text_id, paragraph_id) |>
+  dplyr::arrange(sentence_order_key, .by_group = TRUE) |>
+  dplyr::mutate(
+    sentence_in_paragraph = dplyr::row_number()
+  ) |>
+  dplyr::ungroup()
+
+# Create source and target sentence tables.
+# The source sentence provides nouns.
+# The target sentence provides later pronouns.
+
+sentence_sources <- sentence_reference_table |>
+  dplyr::select(
+    text_id,
+    paragraph_id,
+    from_sentence_id = sentence_id,
+    from_sentence_in_paragraph = sentence_in_paragraph,
+    from_n_words_no_punct = n_words_no_punct,
+    from_n_nouns = n_nouns
+  )
+
+sentence_targets <- sentence_reference_table |>
+  dplyr::select(
+    text_id,
+    paragraph_id,
+    to_sentence_id = sentence_id,
+    to_sentence_in_paragraph = sentence_in_paragraph,
+    to_n_words_no_punct = n_words_no_punct,
+    to_n_pronouns = n_pronouns
+  )
+
+# Create one shared paragraph-internal sentence-pair matrix.
+#
+# This matrix contains all forward sentence pairs inside the same paragraph:
+# S1 -> S2, S1 -> S3, S1 -> S4, ...
+# S2 -> S3, S2 -> S4, ...
+#
+# y3b will later use only sentence_distance == 1.
+# y3c will later use only sentence_distance >= 2.
+
+y3_master_pairs <- sentence_sources |>
+  dplyr::inner_join(
+    sentence_targets,
+    by = c("text_id", "paragraph_id"),
+    relationship = "many-to-many"
+  ) |>
+  dplyr::mutate(
+    sentence_distance =
+      to_sentence_in_paragraph - from_sentence_in_paragraph
+  ) |>
+  dplyr::filter(
+    sentence_distance >= 1,
+    sentence_distance <= max_sentence_distance
+  ) |>
+  dplyr::mutate(
+    pair_noun_later_pronoun_ratio = dplyr::if_else(
+      to_n_pronouns > 0,
+      from_n_nouns / to_n_pronouns,
+      NA_real_
+    ),
+    
+    pair_log_noun_later_pronoun_ratio = dplyr::if_else(
+      to_n_pronouns > 0,
+      log((from_n_nouns + 0.5) / (to_n_pronouns + 0.5)),
+      NA_real_
+    )
+  )
+
+# y3b — adjacent sentence noun-pronoun transition.
+# This uses only sentence_distance == 1.
+
+y3b_profile <- y3_master_pairs |>
+  dplyr::filter(
+    sentence_distance == 1
+  ) |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y3b_n_adjacent_sentence_pairs = dplyr::n(),
+    
+    y3b_n_pairs_with_next_pronouns = sum(
+      to_n_pronouns > 0,
+      na.rm = TRUE
+    ),
+    
+    y3b_total_previous_nouns = sum(
+      dplyr::if_else(to_n_pronouns > 0, from_n_nouns, 0L),
+      na.rm = TRUE
+    ),
+    
+    y3b_total_next_pronouns = sum(
+      dplyr::if_else(to_n_pronouns > 0, to_n_pronouns, 0L),
+      na.rm = TRUE
+    ),
+    
+    y3b_adjacent_sentence_noun_pronoun_ratio = dplyr::if_else(
+      y3b_total_next_pronouns > 0,
+      y3b_total_previous_nouns / y3b_total_next_pronouns,
+      NA_real_
+    ),
+    
+    y3b_mean_adjacent_pair_ratio = safe_mean(
+      pair_noun_later_pronoun_ratio
+    ),
+    
+    y3b_mean_adjacent_log_pair_ratio = safe_mean(
+      pair_log_noun_later_pronoun_ratio
+    ),
+    
+    .groups = "drop"
+  )
+
+# y3c — longer paragraph-internal noun-pronoun transition.
+# This excludes sentence_distance == 1.
+# Therefore y3c starts with S_i -> S_i+2.
+
+y3c_profile <- y3_master_pairs |>
+  dplyr::filter(
+    sentence_distance >= 2,
+    to_n_pronouns > 0
+  ) |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y3c_n_longer_distance_pairs = dplyr::n(),
+    
+    y3c_total_distant_previous_nouns = sum(
+      from_n_nouns,
+      na.rm = TRUE
+    ),
+    
+    y3c_total_later_pronouns = sum(
+      to_n_pronouns,
+      na.rm = TRUE
+    ),
+    
+    y3c_longer_distance_noun_pronoun_ratio = dplyr::if_else(
+      y3c_total_later_pronouns > 0,
+      y3c_total_distant_previous_nouns / y3c_total_later_pronouns,
+      NA_real_
+    ),
+    
+    y3c_mean_longer_distance_pair_ratio = safe_mean(
+      pair_noun_later_pronoun_ratio
+    ),
+    
+    y3c_mean_longer_distance_log_pair_ratio = safe_mean(
+      pair_log_noun_later_pronoun_ratio
+    ),
+    
+    .groups = "drop"
+  )
+
+# Detailed y3c distance profile.
+# This shows the longer-distance pattern separately for distance 2, 3, 4, 5.
+
+y3c_distance_profile <- y3_master_pairs |>
+  dplyr::filter(
+    sentence_distance >= 2,
+    to_n_pronouns > 0
+  ) |>
+  dplyr::group_by(text_id, sentence_distance) |>
+  dplyr::summarise(
+    y3c_n_pairs = dplyr::n(),
+    
+    y3c_total_previous_nouns = sum(
+      from_n_nouns,
+      na.rm = TRUE
+    ),
+    
+    y3c_total_later_pronouns = sum(
+      to_n_pronouns,
+      na.rm = TRUE
+    ),
+    
+    y3c_distance_noun_pronoun_ratio = dplyr::if_else(
+      y3c_total_later_pronouns > 0,
+      y3c_total_previous_nouns / y3c_total_later_pronouns,
+      NA_real_
+    ),
+    
+    y3c_mean_pair_ratio = safe_mean(
+      pair_noun_later_pronoun_ratio
+    ),
+    
+    y3c_mean_log_pair_ratio = safe_mean(
+      pair_log_noun_later_pronoun_ratio
+    ),
+    
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 3)
+    )
+  ) |>
+  dplyr::arrange(text_id, sentence_distance)
+
+# Combine y3a, y3b, and y3c into one text-level y3 profile.
+#
+# y3a = whole-text noun/pronoun ratio.
+# y3b = adjacent sentence transition.
+# y3c = longer paragraph-internal transition.
+
+y3_sentence_profile <- y3a_profile |>
+  dplyr::left_join(
+    y3b_profile,
+    by = "text_id"
+  ) |>
+  dplyr::left_join(
+    y3c_profile,
+    by = "text_id"
+  ) |>
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 3)
+    )
+  ) |>
+  dplyr::arrange(text_id)
+
+print(y3_sentence_profile, width = Inf)
+print(y3c_distance_profile, width = Inf)
+```
+# Note: y3a asks:
+Across the whole text, how many nouns are there compared to pronouns?
+
+y3b asks:
+Does a directly following sentence have pronouns after nouns in the previous sentence?
+
+y3c asks:
+Does nominal material remain available across longer paragraph-internal sentence distances?
+The y3c measure models paragraph-internal longer-distance referential support. It compares nouns in earlier sentences with pronouns in later, non-adjacent sentences within the same paragraph. Since adjacent sentence pairs are already captured by y3b, y3c starts at sentence distance 2. The measure does not resolve actual antecedents, but approximates whether nominal material remains structurally available before later pronominal continuation. It does not prove that a pronoun refers to a specific noun. The y3c measure models paragraph-internal longer-distance referential support. It compares nouns in earlier sentences with pronouns in later, non-adjacent sentences within the same paragraph. Since adjacent sentence pairs are already captured by y3b, y3c starts at sentence distance 2. The measure does not resolve actual antecedents, but approximates whether nominal material remains structurally available before later pronominal continuation.
+
+# 
+
+```{r}
+# MODUL 5b14b — y3d referential decay / retention proxy
+# This cell derives an optional y3d index from y3c_distance_profile.
+#
+# What is calculated?
+# y3d checks whether the skip-one sentence handover of cohesive
+# referentiality between nouns and pronouns weakens across paragraph-internal
+# sentence distance.
+#
+# How is it calculated?
+# Distance 2 is used as the first longer-distance baseline:
+# S1 -> S3, S2 -> S4, etc.
+#
+# Then we compare the later observed distances with this baseline.
+#
+# Positive loss means:
+# noun/pronoun support becomes weaker at longer distances.
+#
+# Negative loss means:
+# noun/pronoun support becomes stronger at longer distances.
+#
+# This is not full coreference resolution.
+# It is a structural referential decay / retention proxy.
+
+y3d_decay_profile <- y3c_distance_profile |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y3d_ratio_at_distance_2 = dplyr::first(
+      y3c_distance_noun_pronoun_ratio[sentence_distance == 2]
+    ),
+    
+    y3d_log_ratio_at_distance_2 = dplyr::first(
+      y3c_mean_log_pair_ratio[sentence_distance == 2]
+    ),
+    
+    y3d_last_observed_distance = max(
+      sentence_distance,
+      na.rm = TRUE
+    ),
+    
+    y3d_ratio_at_last_distance = dplyr::first(
+      y3c_distance_noun_pronoun_ratio[
+        sentence_distance == max(sentence_distance, na.rm = TRUE)
+      ]
+    ),
+    
+    y3d_log_ratio_at_last_distance = dplyr::first(
+      y3c_mean_log_pair_ratio[
+        sentence_distance == max(sentence_distance, na.rm = TRUE)
+      ]
+    ),
+    
+    y3d_loss_distance2_to_last =
+      y3d_ratio_at_distance_2 - y3d_ratio_at_last_distance,
+    
+    y3d_log_loss_distance2_to_last =
+      y3d_log_ratio_at_distance_2 - y3d_log_ratio_at_last_distance,
+    
+    y3d_retention_distance2_to_last = dplyr::if_else(
+      !is.na(y3d_ratio_at_distance_2) &
+        y3d_ratio_at_distance_2 > 0,
+      y3d_ratio_at_last_distance / y3d_ratio_at_distance_2,
+      NA_real_
+    ),
+    
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    y3d_loss_rate_distance2_to_last =
+      1 - y3d_retention_distance2_to_last
+  )
+
+y3d_slope_profile <- y3c_distance_profile |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    y3d_distance_slope = dplyr::if_else(
+      dplyr::n() >= 2,
+      coef(
+        stats::lm(
+          y3c_distance_noun_pronoun_ratio ~ sentence_distance
+        )
+      )[2],
+      NA_real_
+    ),
+    
+    y3d_log_distance_slope = dplyr::if_else(
+      dplyr::n() >= 2,
+      coef(
+        stats::lm(
+          y3c_mean_log_pair_ratio ~ sentence_distance
+        )
+      )[2],
+      NA_real_
+    ),
+    
+    .groups = "drop"
+  )
+
+y3d_decay_profile <- y3d_decay_profile |>
+  dplyr::left_join(
+    y3d_slope_profile,
+    by = "text_id"
+  ) |>
+  dplyr::mutate(
+    dplyr::across(
+      where(is.numeric),
+      ~ round(.x, 3)
+    )
+  ) |>
+  dplyr::arrange(text_id)
+
+print(y3d_decay_profile, width = Inf)
+```
+# Note: This does not prove actual coreference resolution, because we do not identify exact antecedent–pronoun pairs. But it does show that the human text provides a stronger structural environment for cross-sentence noun–pronoun cohesion. The y3d profile suggests that the human baseline maintains a stronger and more stable longer-distance handover of cohesive referentiality between nouns and pronouns. Compared with the LLM texts, the human text starts from a higher noun-to-later-pronoun ratio and shows only minimal decay across paragraph-internal sentence distance. This indicates a more stable structural basis for pronominal continuation and, therefore, a stronger form of local referential cohesion.
+Results in a improved CCP: y3a = whole-text noun/pronoun ratio
+y3b = adjacent sentence noun → pronoun handover
+y3d = decay of longer-distance noun → pronoun handover
+For each text, I calculate a paragraph-internal noun/pronoun handover ratio at each sentence distance d.
+
+Distance d = 2 means, for example, S1→S3, S2→S4, etc.; distance d = 3 means S1→S4, S2→S5, etc. For each distance, the ratio R_d(T) is computed as the total number of nouns in the earlier sentences divided by the total number of pronouns in the later sentences.
+
+The decay index then compares the first longer-distance relation with the last observed longer-distance relation: y3_dloss(T) = R_2(T) − R_last(T), and the proportional loss is y3_dloss-rate(T) = 1 − (R_last(T) / R_2(T)).
+
+A positive value means that referential support weakens across distance, a value around zero means that it remains stable, and a negative value means that the structural noun/pronoun support becomes stronger at the later distance.
+
+#
+
+```{r}
+
+# MODUL 5b15 — Lock y3 indices for CCP
+# This cell fixes the final y3 structure for the CCP profile.
+#
+# What is locked in?
+#
+# y3a = whole-text noun/pronoun ratio.
+# y3b = adjacent sentence noun -> pronoun handover.
+# y3d = longer-distance referential decay/retention index.
+#
+# What happens with y3c?
+# y3c_distance_profile is kept as a diagnostic table.
+# It is not directly merged into the final CCP profile,
+# because the compact CCP value is y3d, which is derived from y3c.
+
+if (!exists("y3_sentence_profile")) {
+  stop("Missing object: y3_sentence_profile. Run MODUL 5b14 first.")
+}
+
+if (!exists("y3d_decay_profile")) {
+  stop("Missing object: y3d_decay_profile. Run the y3d decay cell first.")
+}
+
+if (!exists("y3c_distance_profile")) {
+  stop("Missing object: y3c_distance_profile. Run MODUL 5b14 first.")
+}
+
+y3_ccp_profile <- y3_sentence_profile |>
+  dplyr::select(
+    text_id,
+    
+    # y3a — whole-text noun/pronoun ratio
+    y3a_n_nouns,
+    y3a_n_pronouns,
+    y3a_noun_pronoun_ratio,
+    y3a_log_noun_pronoun_ratio,
+    
+    # y3b — adjacent sentence noun -> pronoun handover
+    y3b_n_adjacent_sentence_pairs,
+    y3b_n_pairs_with_next_pronouns,
+    y3b_total_previous_nouns,
+    y3b_total_next_pronouns,
+    y3b_adjacent_sentence_noun_pronoun_ratio,
+    y3b_mean_adjacent_pair_ratio,
+    y3b_mean_adjacent_log_pair_ratio
+  ) |>
+  dplyr::left_join(
+    y3d_decay_profile |>
+      dplyr::select(
+        text_id,
+        
+        # y3d — longer-distance referential decay/retention
+        y3d_ratio_at_distance_2,
+        y3d_ratio_at_last_distance,
+        y3d_loss_distance2_to_last,
+        y3d_retention_distance2_to_last,
+        y3d_loss_rate_distance2_to_last,
+        y3d_distance_slope,
+        y3d_log_distance_slope
+      ),
+    by = "text_id"
+  ) |>
+  dplyr::arrange(text_id)
+
+print(y3_ccp_profile, width = Inf)
+
+saveRDS(
+  y3_ccp_profile,
+  file.path(module_output_dir, "ccp_module_5b_y3_reference_profile.rds")
+)
+
+readr::write_csv(
+  y3_ccp_profile,
+  file.path(module_output_dir, "ccp_module_5b_y3_reference_profile.csv")
+)
+
+saveRDS(
+  y3c_distance_profile,
+  file.path(module_output_dir, "diagnostic_y3c_distance_profile.rds")
+)
+
+readr::write_csv(
+  y3c_distance_profile,
+  file.path(module_output_dir, "diagnostic_y3c_distance_profile.csv")
+)
+
+message("Saved: ", file.path(module_output_dir, "ccp_module_5b_y3_reference_profile.rds"))
+message("Saved: ", file.path(module_output_dir, "ccp_module_5b_y3_reference_profile.csv"))
+message("Saved diagnostic: ", file.path(module_output_dir, "diagnostic_y3c_distance_profile.rds"))
+message("Saved diagnostic: ", file.path(module_output_dir, "diagnostic_y3c_distance_profile.csv"))
+```
+# Note: Final CCP y3 bundle:
+y3a = whole-text noun/pronoun ratio
+y3b = adjacent sentence noun → pronoun handover
+y3d = longer-distance referential decay/retention
+
+Diagnostic only:
+y3c = paragraph-internal distance profile
+&
+So far in **MODUL 5b**, we built the first CCP layers from the parsed token data.
+
+Completed:
+
+```text
+y1 = psycholinguistic norm profile
+- concreteness
+- imageability
+- abstractness_proxy
+- norm coverage around 80–84%
+- optional noun-level y1 sub-layer confirms stronger human noun concreteness
+
+y2 = content-word / function-word ratio
+
+y3 = referential cohesion bundle
+- y3a = whole-text noun/pronoun ratio
+- y3b = adjacent sentence noun → pronoun handover
+- y3d = longer-distance referential decay/retention derived from y3c
+- y3c remains diagnostic only
+
+y6 = function-word subtype distribution
+```
+
+Main early finding:
+
+```text
+The human baseline shows higher psycholinguistic grounding and stronger structural noun–pronoun referential cohesion than the LLM texts, especially in y1 and the y3 bundle.
+```
+
+Still to come:
+
+```text
+Finish MODUL 5b merge/save
+MODUL 5c — y4 adjacent paragraph all-lemma overlap
+MODUL 5d — x-side coherence/plausibility:
+  x1 parser-filtered chunks
+  x2a PMI/MI plausibility
+  x2b VP-centered semantic-frame plausibility
+  x3 sentence-to-sentence semantic similarity
+  x4 sentence/paragraph-to-title or whole-text similarity
+MODUL 5e — final CCP table
+MODUL 6 — human–LLM comparison, deltas, plots, interpretation
+```
+# MODUL 5b16 — Merge final MODUL 5b profile
+
+```{r}
+# MODUL 5b16 — Merge final MODUL 5b profile
+# This cell creates the final MODUL 5b table.
+#
+# What is included?
+# - y1 = psycholinguistic norm profile
+# - y2 = content-word / function-word ratio
+# - y3 = referential cohesion bundle
+#        y3a = whole-text noun/pronoun ratio
+#        y3b = adjacent sentence noun -> pronoun handover
+#        y3d = longer-distance referential decay/retention
+# - y6 = function-word subtype distribution
+#
+# What is not included?
+# - descriptive statistics
+# - y3c distance table
+# - optional y1 noun overview
+#
+# These remain separate diagnostic/inspection outputs.
+
+if (!exists("y1_profile")) {
+  stop("Missing object: y1_profile. Run MODUL 5b11 first.")
+}
+
+if (!exists("token_pos_profile")) {
+  stop("Missing object: token_pos_profile. Run MODUL 5b12 first.")
+}
+
+if (!exists("y3_ccp_profile")) {
+  stop("Missing object: y3_ccp_profile. Run MODUL 5b15 first.")
+}
+
+y2_y6_profile <- token_pos_profile |>
+  dplyr::select(
+    text_id,
+    
+    # transparent token/POS counts
+    n_tokens_total,
+    n_words_no_punct,
+    n_content,
+    n_function,
+    n_x_tokens,
+    
+    # y2
+    y2_content_function_ratio,
+    
+    # y6
+    y6_prop_adp,
+    y6_prop_cconj,
+    y6_prop_sconj,
+    y6_prop_det,
+    y6_prop_pron,
+    y6_prop_aux,
+    y6_prop_part
+  )
+
+ccp_module_5b_tokens <- y1_profile |>
+  dplyr::left_join(
+    y2_y6_profile,
+    by = "text_id"
+  ) |>
+  dplyr::left_join(
+    y3_ccp_profile,
+    by = "text_id"
+  ) |>
+  dplyr::arrange(text_id)
+
+if (any(duplicated(ccp_module_5b_tokens$text_id))) {
+  stop("MODUL 5b output has duplicate text_id rows.")
+}
+
+print(ccp_module_5b_tokens, width = Inf)
+```
+#
+
+```{r}
+# MODUL 5b17 — Save final MODUL 5b output
+# This saves the completed MODUL 5b profile table.
+# The table has one row per text and contains the official 5b CCP indices.
+
+saveRDS(
+  ccp_module_5b_tokens,
+  file.path(module_output_dir, "ccp_module_5b_tokens.rds")
+)
+
+readr::write_csv(
+  ccp_module_5b_tokens,
+  file.path(module_output_dir, "ccp_module_5b_tokens.csv")
+)
+
+message("Saved: ", file.path(module_output_dir, "ccp_module_5b_tokens.rds"))
+message("Saved: ", file.path(module_output_dir, "ccp_module_5b_tokens.csv"))
+```
+#-----END OF MODUL 5b!-----------------------------------
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).

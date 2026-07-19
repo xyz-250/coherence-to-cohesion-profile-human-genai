@@ -1,0 +1,2 @@
+source,n_units,n_documents,n_original_sentence_ids,n_empty_units,n_missing_document_ids,n_missing_mapping_positions,n_duplicated_document_mapping_positions
+Leipzig_filtered,1939,1909,1939,0,0,0,0

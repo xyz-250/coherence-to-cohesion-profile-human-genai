@@ -1,0 +1,1943 @@
+---
+title: "CCP_generation_Modul_7_PMI"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+editor: visual
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Modul 7.0 Architectural Overview Generate a publication-ready Graphviz Dot Diagram
+
+```{r}
+
+# MODUL 7.0 — Render the distributional-plausibility architecture
+
+library(DiagrammeR)
+
+modul7_tree <- DiagrammeR::grViz("
+digraph G {
+  graph [layout=dot, rankdir=LR, splines=true, overlap=false]
+  node [fontname='Helvetica', shape=box, style='filled', fillcolor='#F4F6F7',
+        color='#BDC3C7', fontcolor='#2C3E50']
+  edge [color='#7F8C8D', arrowhead=vex, arrowsize=0.8]
+
+  root [label='x2_distributional_plausibility', fillcolor='#2C3E50',
+        fontcolor='white', style='bold,filled', shape=folder]
+
+  x2a [label='x2a\\nfunctor-based frames', fillcolor='#3498DB', fontcolor='white']
+  x2b [label='x2b\\n+2_sliding_cxw_PMI', fillcolor='#E67E22', fontcolor='white']
+  x2c [label='x2c\\nconnector sequence PMI', fillcolor='#2ECC71', fontcolor='white']
+
+  x2a1 [label='x2a1_nominal\\npre_f ↔ functor']
+  x2a2 [label='x2a2_predicative\\nfunctor ↔ post_f']
+  x2c1 [label='x2c1_subc_sw\\nSCONJ sequence']
+  x2c2 [label='x2c2_cor_sw\\nCCONJ sequence']
+
+  x2a_txt [label='Root-region frames in retained body sentences\\nwith VERB/AUX root', shape=note, fillcolor='#FFF9C4']
+  x2a1_txt [label='First parser-linked preverbal\\nPRON, NOUN, or PROPN candidate', shape=note, fillcolor='#FFF9C4']
+  x2a2_txt [label='Parser-identified obj/iobj nominal head', shape=note, fillcolor='#FFF9C4']
+  x2b_txt [label='Ordered q0+q1+q2 windows\\nwith final q0+q1 residual', shape=note, fillcolor='#FFF9C4']
+  x2c1_txt [label='Sequence beginning with SCONJ', shape=note, fillcolor='#FFF9C4']
+  x2c2_txt [label='Sequence beginning with CCONJ', shape=note, fillcolor='#FFF9C4']
+
+  root -> x2a
+  root -> x2b
+  root -> x2c
+
+  x2a -> x2a_txt [style=dotted]
+  x2a -> x2a1
+  x2a -> x2a2
+  x2a1 -> x2a1_txt [style=dotted]
+  x2a2 -> x2a2_txt [style=dotted]
+
+  x2b -> x2b_txt [style=dotted]
+
+  x2c -> x2c1
+  x2c -> x2c2
+  x2c1 -> x2c1_txt [style=dotted]
+  x2c2 -> x2c2_txt [style=dotted]
+}
+")
+
+print(modul7_tree)
+```
+```{r}
+# Save MODUL 7.0 diagram as PNG
+
+library(rsvg)
+
+stopifnot(
+  requireNamespace("DiagrammeRsvg", quietly = TRUE),
+  requireNamespace("rsvg", quietly = TRUE)
+)
+
+modul7_svg <- DiagrammeRsvg::export_svg(modul7_tree)
+
+rsvg::rsvg_png(
+  charToRaw(modul7_svg),
+  file = "../measure_outputs/modul_7_architecture.png",
+  width = 2400,
+  height = 1400
+)
+
+stopifnot(file.exists("../measure_outputs/modul_7_architecture.png"))
+
+cat(
+  "MODUL 7 architecture saved:\n",
+  "../measure_outputs/modul_7_architecture.png\n"
+)
+```
+# # MODUL 7.1 — Initialize the PMI workflow
+
+```{r}
+# MODUL 7.1 — Initialize the PMI workflow
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(stringr)
+library(tibble)
+
+stopifnot(
+  file.exists("../data_prep_CCP_output/current_texts_parsed.rds"),
+  file.exists("../data_prep_CCP_output/parsed_S_layer.rds"),
+  dir.exists("../measure_outputs")
+)
+
+current_texts_parsed <- readRDS(
+  "../data_prep_CCP_output/current_texts_parsed.rds"
+)
+
+parsed_S_layer <- readRDS(
+  "../data_prep_CCP_output/parsed_S_layer.rds"
+)
+sentence_segment_table <- readRDS(
+  "M6_prep_outputs/modul_6_LSA_inputs.rds"
+)$sentence_segment_table
+stopifnot(
+  is.data.frame(current_texts_parsed),
+  is.data.frame(parsed_S_layer),
+  nrow(current_texts_parsed) > 0L,
+  nrow(parsed_S_layer) > 0L
+)
+
+cat(
+  "MODUL 7 PMI workflow initialized.\n",
+  "Parsed target-token rows: ", nrow(current_texts_parsed), "\n",
+  "Parsed target-sentence rows: ", nrow(parsed_S_layer), "\n",
+  "No candidates or PMI values calculated.\n",
+  sep = ""
+)
+
+```
+
+# Note: 
+
+# MODUL 7.2 — Analytical scope
+
+MODUL 7 evaluates the corpus-based statistical plausibility of approved (present in corpus) multiword combinations extracted from the Human, ChatGPT, and Claude texts. `BASIC_GEMINI_NATIVE_001` is excluded because its Markdown contamination produced systematically unreliable token, POS, and dependency annotation.
+
+The x2a family represents parser-restricted functor-based frames that have root status. `x2a1_nominal` pairs the verbal functor with an approved preverbal nominal candidate, while `x2a2_predicative` pairs it with a parser-identified nominal object. The x2b and x2c families represent exact ordered two- or three-token lemma sequences. Titles and subheadings are excluded.
+
+PMI is obtained from the fixed DeReKo reference corpus. Lemma-based queries group inflectional variants and therefore assess the corpus association of the lemma combination rather than the plausibility of the exact inflectional realization found in the target text.
+
+In MODUL 7, the distributional plausibility of the word combinations occurring in the three target texts is examined on the basis of a human-authored reference corpus. (BASIC_GEMINI_NATIVE_001 is excluded from MODUL 7 because Markdown-related contamination produced systematically unreliable token, POS, and dependency annotation. Gemini is retained only in the exclusion audit and does not enter candidate extraction, corpus querying, PMI calculation, aggregation, or final reporting.) For this purpose, all candidates are first preserved with their token and lemma forms as well as their unambiguous assignment to text_id, sentence, and original token position. In simple main clauses and in the respective root area of more complex sentences, the areas pre_f = nominal candidates, functor = VERB, and post_f = predicative candidates are distinguished for x2a1 and x2a2: In the sentence “Menschen entwickeln neue Fähigkeiten,” for example, Menschen ↔ entwickeln can be examined as a connection between pre_f = nominal candidates and functor, and entwickeln ↔ Fähigkeiten as a connection between functor and post_f = predicative candidates. Subordinate clauses and coordinated continuations, by contrast, are not analysed again through this functor logic, but are divided from a recognized SCONJ or CCONJ onwards into directly consecutive sliding windows: From “weil Menschen neue Fähigkeiten entwickeln,” for example, the lemma windows weil mensch neu, mensch neu fähigkeit, neu fähigkeit entwickeln, and finally fähigkeit entwickeln are created. Titles and subheadings are fully excluded. In the subsequent DeReKo pilot, lemma and token queries are tested in parallel; the lemma level will probably serve as the primary PMI query, while the token level is preserved as a control, diagnostic, or fallback representation. 
+# Caveat: 
+It must be explicitly noted that a lemma-based query groups different inflectional forms under one lemma; therefore, the concrete inflectional structure of the word combination realized in the target text cannot be tested for plausibility.
+
+
+# # MODUL 7.2b — Establish and freeze the retained sentence scope
+
+```{r}
+
+# MODUL 7.2b — Part 1: Scope Resolution, Root Validation & Exclusion Freeze
+
+library(dplyr)
+
+m7_excluded_text_ids <- "BASIC_GEMINI_NATIVE_001"
+
+stopifnot(
+  all(c("text_id", "sentence_id") %in% names(sentence_segment_table)),
+  all(c("text_id", "sentence_id") %in% names(parsed_S_layer)),
+  all(c("text_id", "sentence_id", "token_id", "token", "lemma", "pos", "dep_rel", "head_token_id") %in% names(current_texts_parsed))
+)
+
+sentence_segment_table <- sentence_segment_table |>
+  dplyr::transmute(text_id = as.character(text_id), sentence_id = as.integer(sentence_id)) |>
+  dplyr::distinct()
+
+# Reuse the root-token layer throughout the scope calculation
+root_rows <- current_texts_parsed |>
+  dplyr::filter(dep_rel == "root") |>
+  dplyr::select(text_id, sentence_id, token_id, token, lemma, pos, dep_rel, head_token_id)
+
+stopifnot(
+  nrow(sentence_segment_table) == 106L, !anyDuplicated(sentence_segment_table),
+  sentence_segment_table |>
+    dplyr::left_join(root_rows |> dplyr::count(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+    dplyr::summarise(valid = all(dplyr::coalesce(n, 0L) == 1L)) |>
+    dplyr::pull(valid)
+)
+
+# Exclude Gemini, non-body rows, and body sentences without a VERB/AUX root
+m7_S_excl <- parsed_S_layer |>
+  dplyr::semi_join(
+    dplyr::bind_rows(
+      parsed_S_layer |> dplyr::filter(text_id %in% m7_excluded_text_ids) |> dplyr::select(text_id, sentence_id),
+      parsed_S_layer |> dplyr::anti_join(sentence_segment_table, by = c("text_id", "sentence_id")) |> dplyr::select(text_id, sentence_id),
+      sentence_segment_table |>
+        dplyr::inner_join(root_rows |> dplyr::select(text_id, sentence_id, pos), by = c("text_id", "sentence_id")) |>
+        dplyr::filter(!pos %in% c("VERB", "AUX")) |>
+        dplyr::select(text_id, sentence_id)
+    ) |>
+      dplyr::distinct(),
+    by = c("text_id", "sentence_id")
+  ) |>
+  dplyr::left_join(root_rows, by = c("text_id", "sentence_id")) |>
+  dplyr::arrange(text_id, sentence_id)
+
+stopifnot(
+  nrow(m7_S_excl) == 55L,
+  !anyDuplicated(m7_S_excl[c("text_id", "sentence_id")]),
+  sum(m7_S_excl$text_id == m7_excluded_text_ids) == sum(parsed_S_layer$text_id == m7_excluded_text_ids),
+  nrow(parsed_S_layer) - nrow(m7_S_excl) == 62L
+)
+
+# Freeze and verify the exclusion layer
+saveRDS(m7_S_excl, "../measure_outputs/m7_S_excl.rds", version = 3)
+m7_S_excl_verify <- readRDS("../measure_outputs/m7_S_excl.rds")
+
+stopifnot(
+  is.data.frame(m7_S_excl_verify),
+  nrow(m7_S_excl_verify) == 55L,
+  identical(m7_S_excl, m7_S_excl_verify)
+)
+
+m7_S_excl <- m7_S_excl_verify
+
+cat(
+  "MODUL 7 sentence-exclusion layer frozen and verified.\n",
+  "Gemini excluded completely: yes\n",
+  "Frozen output: ../measure_outputs/m7_S_excl.rds\n",
+  "Total excluded sentence rows: ", nrow(m7_S_excl), "\n",
+  "Retained sentence rows: ", nrow(parsed_S_layer) - nrow(m7_S_excl), "\n",
+  sep = ""
+)
+```
+
+# MODUL 7.4 — Build and freeze the x2a Functor Candidate Space
+
+```{r}
+# MODUL 7.4 — Build and freeze the x2a Functor Candidate Space
+
+# 1. Build x2a1_nominal and x2a2_predicative
+
+x2a_functor_candidates <- (\(.root) {
+  dplyr::bind_rows(
+    .root |>
+      dplyr::left_join(
+        current_texts_parsed |>
+          dplyr::anti_join(m7_S_excl |> dplyr::select(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+          dplyr::inner_join(.root |> dplyr::select(text_id, sentence_id, functor_token_id), by = c("text_id", "sentence_id")) |>
+          dplyr::filter(pos %in% c("NOUN", "PRON", "PROPN"), as.integer(token_id) < as.integer(functor_token_id), head_token_id == functor_token_id) |>
+          dplyr::arrange(text_id, sentence_id, !grepl("^nsubj", dep_rel), as.integer(token_id)) |>
+          dplyr::group_by(text_id, sentence_id) |> dplyr::slice_head(n = 1L) |> dplyr::ungroup() |>
+          dplyr::transmute(text_id, sentence_id, pre_f_token_id = token_id, pre_f_token = token, pre_f_lemma = lemma),
+        by = c("text_id", "sentence_id")
+      ) |>
+      dplyr::transmute(
+        candidate_type = "x2a1_nominal", candidate_status = dplyr::if_else(is.na(pre_f_token_id), "excluded_parser", "approved"),
+        text_id, sentence_id, paragraph_id, sentence_text, sentence_n_tokens, sentence_n_lemmas,
+        functor_token_id, functor_token, functor_lemma, pre_f_token_id, pre_f_token, pre_f_lemma,
+        post_f_token_id = NA_character_, post_f_token = NA_character_, post_f_lemma = NA_character_
+      ),
+
+    .root |>
+      dplyr::left_join(
+        current_texts_parsed |>
+          dplyr::anti_join(m7_S_excl |> dplyr::select(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+          dplyr::inner_join(.root |> dplyr::select(text_id, sentence_id, functor_token_id), by = c("text_id", "sentence_id")) |>
+          dplyr::filter(pos %in% c("NOUN", "PROPN"), dep_rel %in% c("obj", "iobj"), head_token_id == functor_token_id) |>
+          dplyr::arrange(text_id, sentence_id, dep_rel != "obj", as.integer(token_id)) |>
+          dplyr::group_by(text_id, sentence_id) |> dplyr::slice_head(n = 1L) |> dplyr::ungroup() |>
+          dplyr::transmute(text_id, sentence_id, post_f_token_id = token_id, post_f_token = token, post_f_lemma = lemma),
+        by = c("text_id", "sentence_id")
+      ) |>
+      dplyr::transmute(
+        candidate_type = "x2a2_predicative", candidate_status = dplyr::if_else(is.na(post_f_token_id), "excluded_parser", "approved"),
+        text_id, sentence_id, paragraph_id, sentence_text, sentence_n_tokens, sentence_n_lemmas,
+        functor_token_id, functor_token, functor_lemma,
+        pre_f_token_id = NA_character_, pre_f_token = NA_character_, pre_f_lemma = NA_character_,
+        post_f_token_id, post_f_token, post_f_lemma
+      )
+  ) |>
+    dplyr::mutate(
+      candidate_id = paste0(text_id, "_S", sprintf("%03d", sentence_id), "_", candidate_type, "_C001"),
+      window_id_control = candidate_id
+    ) |>
+    dplyr::select(candidate_id, window_id_control, candidate_type, candidate_status, dplyr::everything())
+})(
+  current_texts_parsed |>
+    dplyr::anti_join(m7_S_excl |> dplyr::select(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+    dplyr::filter(dep_rel == "root", pos %in% c("VERB", "AUX")) |>
+    dplyr::left_join(parsed_S_layer |> dplyr::select(text_id, sentence_id, sentence_text, n_tokens), by = c("text_id", "sentence_id")) |>
+    dplyr::left_join(
+      current_texts_parsed |>
+        dplyr::anti_join(m7_S_excl |> dplyr::select(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+        dplyr::group_by(text_id, sentence_id) |>
+        dplyr::summarise(sentence_n_lemmas = sum(pos != "PUNCT" & !is.na(lemma) & nzchar(lemma) & tolower(lemma) != "null", na.rm = TRUE), .groups = "drop"),
+      by = c("text_id", "sentence_id")
+    ) |>
+    dplyr::transmute(
+      text_id, sentence_id = as.integer(sentence_id), paragraph_id, sentence_text,
+      sentence_n_tokens = as.integer(n_tokens), sentence_n_lemmas,
+      functor_token_id = token_id, functor_token = token, functor_lemma = lemma
+    )
+)
+# 2. Validate, freeze, and reload
+
+m7_excluded_text_ids <- "BASIC_GEMINI_NATIVE_001"
+
+stopifnot(
+  nrow(x2a_functor_candidates) == 124L,
+  !anyDuplicated(x2a_functor_candidates$candidate_id),
+  !anyDuplicated(x2a_functor_candidates$window_id_control),
+  all(x2a_functor_candidates$candidate_status %in% c("approved", "excluded_parser")),
+  !any(x2a_functor_candidates$text_id %in% m7_excluded_text_ids),
+  dplyr::n_distinct(x2a_functor_candidates$text_id) == 3L,
+  sum(x2a_functor_candidates$candidate_status == "approved") == 77L,
+  sum(x2a_functor_candidates$candidate_status == "excluded_parser") == 47L
+)
+
+saveRDS(x2a_functor_candidates, "../measure_outputs/x2a_functor_candidates.rds", version = 3)
+x2a_functor_candidates <- readRDS("../measure_outputs/x2a_functor_candidates.rds")
+
+stopifnot(
+  nrow(x2a_functor_candidates) == 124L,
+  !any(x2a_functor_candidates$text_id %in% m7_excluded_text_ids)
+)
+
+# 3. Print the x2a audit
+
+print(
+  x2a_functor_candidates |>
+    dplyr::count(text_id, candidate_type, candidate_status, name = "n_candidates"),
+  n = Inf
+)
+
+cat(
+  "\nMODUL 7.4 x2a candidate space completed and frozen.\n",
+  "Rows: ", nrow(x2a_functor_candidates), "\n",
+  "Approved: ", sum(x2a_functor_candidates$candidate_status == "approved"), "\n",
+  "Excluded by parser rule: ", sum(x2a_functor_candidates$candidate_status == "excluded_parser"), "\n",
+  "Texts represented: ", dplyr::n_distinct(x2a_functor_candidates$text_id), "\n",
+  "Gemini rows: ", sum(x2a_functor_candidates$text_id %in% m7_excluded_text_ids), "\n",
+  "Frozen output: ../measure_outputs/x2a_functor_candidates.rds\n",
+  "No corpus query, frequency, PMI, or n_mw_Combo value was calculated.\n",
+  sep = ""
+)
+
+```
+
+# MODUL 7.5 — Build and freeze the x2b Sliding-Context Candidate Space
+
+
+```{r}
+
+# MODUL 7.5 — Build and freeze the x2b Sliding-Context Candidate Space
+
+make_x2b_windows <- function(ids, tokens, lemmas) {
+  n <- length(tokens)
+  starts <- if (n == 2L) 1L else c(seq_len(n - 2L), n - 1L)
+
+  purrr::map_dfr(starts, \(s) {
+    k <- if (s == n - 1L) 2L else 3L
+    i <- s:(s + k - 1L)
+    token_ok <- all(!is.na(tokens[i]) & nzchar(tokens[i]) & tolower(tokens[i]) != "null")
+    lemma_ok <- all(!is.na(lemmas[i]) & nzchar(lemmas[i]) & tolower(lemmas[i]) != "null")
+
+    tibble::tibble(
+      window_order = s, token_n_in_w = k, start_token_id = ids[i[1L]], end_token_id = ids[i[k]],
+      q0_token = tokens[i[1L]], q0_lemma = lemmas[i[1L]],
+      q1_token = tokens[i[2L]], q1_lemma = lemmas[i[2L]],
+      q2_token = if (k == 3L) tokens[i[3L]] else NA_character_,
+      q2_lemma = if (k == 3L) lemmas[i[3L]] else NA_character_,
+      pmi_window = if (token_ok) paste(tokens[i], collapse = " ") else NA_character_,
+      pmi_window_lemma = if (lemma_ok) paste(lemmas[i], collapse = " ") else NA_character_,
+      candidate_status = if (token_ok) "approved" else "excluded_parser"
+    )
+  })
+}
+
+x2b_sliding_windows <- current_texts_parsed |>
+  dplyr::anti_join(m7_S_excl |> dplyr::select(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+  dplyr::mutate(token_pos = as.integer(token_id)) |>
+  dplyr::arrange(text_id, sentence_id, token_pos) |>
+  dplyr::group_by(text_id, sentence_id) |>
+  dplyr::mutate(area_order = cumsum(dplyr::lag(token == ",", default = FALSE)) + 1L, n_areas = max(area_order)) |>
+  dplyr::filter(pos != "PUNCT") |>
+  dplyr::group_by(text_id, sentence_id, paragraph_id, area_order, n_areas) |>
+  dplyr::summarise(
+    token_ids = list(token_id), tokens = list(token), lemmas = list(lemma),
+    contains_root = any(dep_rel == "root"),
+    connector_led = dplyr::first(pos) %in% c("SCONJ", "CCONJ"),
+    relative_clause = any(stringr::str_detect(dep_rel, "relcl")),
+    nonroot_aux = any(pos == "AUX" & dep_rel != "root"),
+    .groups = "drop"
+  ) |>
+  dplyr::filter(!connector_led, lengths(tokens) >= 2L, (n_areas > 1L & !contains_root) | relative_clause | nonroot_aux) |>
+  dplyr::mutate(
+    target_area_id = paste0(text_id, "_S", sprintf("%03d", sentence_id), "_x2b_A", sprintf("%02d", area_order)),
+    target_area = purrr::map_chr(tokens, \(x) paste(x, collapse = " ")),
+    target_area_lemma_audit = purrr::map_chr(
+      lemmas,
+      \(x) if (any(is.na(x) | !nzchar(x) | tolower(x) == "null")) NA_character_ else paste(x, collapse = " ")
+    ),
+    windows = purrr::pmap(list(token_ids, tokens, lemmas), make_x2b_windows)
+  ) |>
+  dplyr::select(-token_ids, -tokens, -lemmas) |>
+  tidyr::unnest(windows) |>
+  dplyr::left_join(parsed_S_layer |> dplyr::select(text_id, sentence_id, sentence_text), by = c("text_id", "sentence_id")) |>
+  dplyr::group_by(text_id, sentence_id) |>
+  dplyr::arrange(area_order, window_order, .by_group = TRUE) |>
+  dplyr::mutate(
+    window_id_control = paste0(text_id, "_S", sprintf("%03d", sentence_id), "_x2b_W", sprintf("%03d", dplyr::row_number())),
+    candidate_type = "x2b"
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::select(
+    window_id_control, candidate_type, candidate_status,
+    text_id, sentence_id, paragraph_id, sentence_text,
+    target_area_id, target_area, target_area_lemma_audit,
+    pmi_window, pmi_window_lemma, token_n_in_w,
+    start_token_id, end_token_id,
+    q0_token, q0_lemma, q1_token, q1_lemma, q2_token, q2_lemma
+  )
+
+# Strict validation
+
+stopifnot(
+  nrow(x2b_sliding_windows) > 0L,
+  !anyDuplicated(x2b_sliding_windows$window_id_control),
+  !any(x2b_sliding_windows$text_id == "BASIC_GEMINI_NATIVE_001"),
+  all(x2b_sliding_windows$token_n_in_w %in% c(2L, 3L)),
+  all(is.na(x2b_sliding_windows$q2_token) == (x2b_sliding_windows$token_n_in_w == 2L)),
+  all(!is.na(x2b_sliding_windows$pmi_window[x2b_sliding_windows$candidate_status == "approved"])),
+  !any(c(
+    "candidate_id", "current_window", "token_sequence", "lemma_sequence",
+    "toke_n_in_w", "target_area_lemma"
+  ) %in% names(x2b_sliding_windows))
+)
+
+# Freeze and verify
+
+saveRDS(x2b_sliding_windows, "../measure_outputs/x2b_sliding_windows.rds", version = 3)
+x2b_sliding_windows_verify <- readRDS("../measure_outputs/x2b_sliding_windows.rds")
+stopifnot(identical(x2b_sliding_windows, x2b_sliding_windows_verify))
+x2b_sliding_windows <- x2b_sliding_windows_verify
+
+# Audit
+
+print(
+  x2b_sliding_windows |>
+    dplyr::count(text_id, token_n_in_w, candidate_status, name = "n_window_occurrences"),
+  n = Inf
+)
+
+cat(
+  "\nMODUL 7.5 x2b candidate space completed and frozen.\n",
+  "Target areas: ", dplyr::n_distinct(x2b_sliding_windows$target_area_id), "\n",
+  "PMI-window occurrences: ", nrow(x2b_sliding_windows), "\n",
+  "Approved: ", sum(x2b_sliding_windows$candidate_status == "approved"), "\n",
+  "Excluded by parser rule: ", sum(x2b_sliding_windows$candidate_status == "excluded_parser"), "\n",
+  "Gemini rows: 0\n",
+  "Frozen output: ../measure_outputs/x2b_sliding_windows.rds\n",
+  "No corpus query, frequency, PMI, or n_mw_Combo value was calculated.\n",
+  sep = ""
+)
+```
+
+# Die Zahl der `excluded_parser`-Zeilen kann sich gegenüber dem bisherigen Ergebnis ändern: Waren die drei Ausschlüsse ausschließlich durch fehlende Lemmata verursacht, werden sie nun korrekt als gültige Tokenfenster zugelassen und nur `pmi_window_lemma` bleibt dort `NA`.
+
+# deleted: MODUL 7.5a — Audit Human x2b PMI-window counts
+
+# MODUL 7.6 — Build and freeze the x2c Connector Sliding-Window Candidate Space
+
+```{r}
+# MODUL 7.6 — Build and freeze the x2c Connector Sliding-Window Candidate Space
+
+stopifnot(exists("make_x2b_windows"))
+
+x2c_connector_sw <- current_texts_parsed |>
+  dplyr::anti_join(m7_S_excl |> dplyr::select(text_id, sentence_id), by = c("text_id", "sentence_id")) |>
+  dplyr::mutate(token_pos = as.integer(token_id)) |>
+  dplyr::arrange(text_id, sentence_id, token_pos) |>
+  dplyr::group_by(text_id, sentence_id) |>
+  dplyr::mutate(area_order = cumsum(dplyr::lag(token == ",", default = FALSE)) + 1L) |>
+  dplyr::filter(pos != "PUNCT") |>
+  dplyr::group_by(text_id, sentence_id, paragraph_id, area_order) |>
+  dplyr::summarise(
+    token_ids = list(token), token_id_values = list(token_id), tokens = list(token), lemmas = list(lemma),
+    connector_type = dplyr::first(pos), connector_token = dplyr::first(token), connector_lemma = dplyr::first(lemma),
+    .groups = "drop"
+  ) |>
+  dplyr::filter(connector_type %in% c("SCONJ", "CCONJ"), lengths(tokens) >= 2L) |>
+  dplyr::mutate(
+    candidate_type = dplyr::if_else(connector_type == "SCONJ", "x2c1_subc_sw", "x2c2_cor_sw"),
+    target_area_id = paste0(text_id, "_S", sprintf("%03d", sentence_id), "_", candidate_type, "_A", sprintf("%02d", area_order)),
+    target_area = purrr::map_chr(tokens, \(x) paste(x, collapse = " ")),
+    target_area_lemma_audit = purrr::map_chr(
+      lemmas,
+      \(x) if (any(is.na(x) | !nzchar(x) | tolower(x) == "null")) NA_character_ else paste(x, collapse = " ")
+    ),
+    windows = purrr::pmap(list(token_id_values, tokens, lemmas), make_x2b_windows)
+  ) |>
+  dplyr::select(-token_ids, -token_id_values, -tokens, -lemmas) |>
+  tidyr::unnest(windows) |>
+  dplyr::left_join(parsed_S_layer |> dplyr::select(text_id, sentence_id, sentence_text), by = c("text_id", "sentence_id")) |>
+  dplyr::group_by(text_id, sentence_id) |>
+  dplyr::arrange(area_order, window_order, .by_group = TRUE) |>
+  dplyr::mutate(
+    window_id_control = paste0(text_id, "_S", sprintf("%03d", sentence_id), "_x2c_W", sprintf("%03d", dplyr::row_number()))
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::select(
+    window_id_control, candidate_type, candidate_status, connector_type, connector_token, connector_lemma,
+    text_id, sentence_id, paragraph_id, sentence_text, target_area_id, target_area, target_area_lemma_audit,
+    pmi_window, pmi_window_lemma, token_n_in_w, start_token_id, end_token_id,
+    q0_token, q0_lemma, q1_token, q1_lemma, q2_token, q2_lemma
+  )
+
+stopifnot(
+  nrow(x2c_connector_sw) > 0L,
+  !anyDuplicated(x2c_connector_sw$window_id_control),
+  !any(x2c_connector_sw$text_id == "BASIC_GEMINI_NATIVE_001"),
+  all(x2c_connector_sw$connector_type %in% c("SCONJ", "CCONJ")),
+  all(x2c_connector_sw$candidate_type == dplyr::if_else(
+    x2c_connector_sw$connector_type == "SCONJ", "x2c1_subc_sw", "x2c2_cor_sw"
+  )),
+  all(x2c_connector_sw$token_n_in_w %in% c(2L, 3L)),
+  all(is.na(x2c_connector_sw$q2_token) == (x2c_connector_sw$token_n_in_w == 2L)),
+  all(!is.na(x2c_connector_sw$pmi_window[x2c_connector_sw$candidate_status == "approved"]))
+)
+
+saveRDS(x2c_connector_sw, "../measure_outputs/x2c_connector_sw.rds", version = 3)
+x2c_connector_sw_verify <- readRDS("../measure_outputs/x2c_connector_sw.rds")
+stopifnot(identical(x2c_connector_sw, x2c_connector_sw_verify))
+x2c_connector_sw <- x2c_connector_sw_verify
+
+print(
+  x2c_connector_sw |>
+    dplyr::count(text_id, candidate_type, token_n_in_w, candidate_status, name = "n_window_occurrences"),
+  n = Inf
+)
+
+cat(
+  "\nMODUL 7.6 x2c connector candidate space completed and frozen.\n",
+  "Connector target areas: ", dplyr::n_distinct(x2c_connector_sw$target_area_id), "\n",
+  "PMI-window occurrences: ", nrow(x2c_connector_sw), "\n",
+  "x2c1 SCONJ areas: ", dplyr::n_distinct(x2c_connector_sw$target_area_id[x2c_connector_sw$candidate_type == "x2c1_subc_sw"]), "\n",
+  "x2c2 CCONJ areas: ", dplyr::n_distinct(x2c_connector_sw$target_area_id[x2c_connector_sw$candidate_type == "x2c2_cor_sw"]), "\n",
+  "Approved: ", sum(x2c_connector_sw$candidate_status == "approved"), "\n",
+  "Excluded by parser rule: ", sum(x2c_connector_sw$candidate_status == "excluded_parser"), "\n",
+  "Gemini rows: 0\n",
+  "Frozen output: ../measure_outputs/x2c_connector_sw.rds\n",
+  "No corpus query, frequency, PMI, or n_mw_Combo value was calculated.\n",
+  sep = ""
+)
+```
+
+# MODUL 7.7 — Build and freeze the Global Deduplicated Query Inventory
+
+```{r}
+# MODUL 7.7 — Build and freeze the Global Deduplicated Query Inventory
+
+# 1. Reload frozen candidate spaces
+# 2. Standardise approved query occurrences
+# 3. Deduplicate and preserve provenance
+# 4. Validate, freeze, reload, and print audit
+
+# MODUL 7.7 — Build and freeze the Global Deduplicated Query Inventory
+
+stopifnot(
+  file.exists("../measure_outputs/x2a_functor_candidates.rds"),
+  file.exists("../measure_outputs/x2b_sliding_windows.rds"),
+  file.exists("../measure_outputs/x2c_connector_sw.rds")
+)
+
+x2a_functor_candidates <- readRDS("../measure_outputs/x2a_functor_candidates.rds")
+x2b_sliding_windows <- readRDS("../measure_outputs/x2b_sliding_windows.rds")
+x2c_connector_sw <- readRDS("../measure_outputs/x2c_connector_sw.rds")
+
+m7_query_occurrences <- dplyr::bind_rows(
+  x2a_functor_candidates |>
+    dplyr::filter(candidate_status == "approved") |>
+    dplyr::transmute(
+      query_mode = "pairwise_collocation", window_id_control, candidate_type, text_id, sentence_id, token_n_in_w = 2L,
+      pmi_window = dplyr::if_else(candidate_type == "x2a1_nominal", stringr::str_c(pre_f_token, functor_token, sep = " "), stringr::str_c(functor_token, post_f_token, sep = " ")),
+      pmi_window_lemma = dplyr::if_else(candidate_type == "x2a1_nominal", stringr::str_c(pre_f_lemma, functor_lemma, sep = " "), stringr::str_c(functor_lemma, post_f_lemma, sep = " "))
+    ),
+  x2b_sliding_windows |>
+    dplyr::filter(candidate_status == "approved") |>
+    dplyr::transmute(query_mode = "exact_window", window_id_control, candidate_type, text_id, sentence_id, token_n_in_w, pmi_window, pmi_window_lemma),
+  x2c_connector_sw |>
+    dplyr::filter(candidate_status == "approved") |>
+    dplyr::transmute(query_mode = "exact_window", window_id_control, candidate_type, text_id, sentence_id, token_n_in_w, pmi_window, pmi_window_lemma)
+) |>
+  dplyr::arrange(query_mode, token_n_in_w, pmi_window, window_id_control)
+
+stopifnot(
+  nrow(m7_query_occurrences) ==
+    sum(x2a_functor_candidates$candidate_status == "approved") +
+    sum(x2b_sliding_windows$candidate_status == "approved") +
+    sum(x2c_connector_sw$candidate_status == "approved"),
+  !anyDuplicated(m7_query_occurrences$window_id_control),
+  !any(m7_query_occurrences$text_id == "BASIC_GEMINI_NATIVE_001"),
+  all(!is.na(m7_query_occurrences$pmi_window) & nzchar(m7_query_occurrences$pmi_window)),
+  all(stringr::str_count(m7_query_occurrences$pmi_window, "\\S+") == m7_query_occurrences$token_n_in_w)
+)
+
+modul_7_query_inventory <- m7_query_occurrences |>
+  dplyr::group_by(query_mode, token_n_in_w, pmi_window) |>
+  dplyr::summarise(
+    pmi_window_lemma_audit = list(sort(unique(pmi_window_lemma[!is.na(pmi_window_lemma)]))),
+    candidate_type = list(sort(unique(candidate_type))),
+    window_id_control = list(window_id_control),
+    text_id = list(sort(unique(text_id))),
+    n_occurrences_global = dplyr::n(),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(query_mode, token_n_in_w, pmi_window) |>
+  dplyr::mutate(query_id = paste0("M7Q", sprintf("%04d", dplyr::row_number())), .before = 1L)
+
+stopifnot(
+  !anyDuplicated(modul_7_query_inventory$query_id),
+  !anyDuplicated(modul_7_query_inventory[c("query_mode", "token_n_in_w", "pmi_window")]),
+  sum(lengths(modul_7_query_inventory$window_id_control)) == nrow(m7_query_occurrences),
+  all(modul_7_query_inventory$n_occurrences_global == lengths(modul_7_query_inventory$window_id_control)),
+  !any(c("corpus_frequency", "corpus_pmi", "query_status", "n_mw_Combo") %in% names(modul_7_query_inventory))
+)
+
+saveRDS(modul_7_query_inventory, "../measure_outputs/modul_7_query_inventory.rds", version = 3)
+modul_7_query_inventory_verify <- readRDS("../measure_outputs/modul_7_query_inventory.rds")
+stopifnot(identical(modul_7_query_inventory, modul_7_query_inventory_verify))
+modul_7_query_inventory <- modul_7_query_inventory_verify
+
+print(
+  modul_7_query_inventory |>
+    dplyr::group_by(query_mode, token_n_in_w) |>
+    dplyr::summarise(n_unique_queries = dplyr::n(), n_occurrences = sum(n_occurrences_global), .groups = "drop"),
+  n = Inf
+)
+
+cat(
+  "\nMODUL 7.7 global query inventory completed and frozen.\n",
+  "Approved occurrence rows: ", nrow(m7_query_occurrences), "\n",
+  "Globally unique queries: ", nrow(modul_7_query_inventory), "\n",
+  "Queries avoided by deduplication: ", nrow(m7_query_occurrences) - nrow(modul_7_query_inventory), "\n",
+  "Gemini rows: 0\n",
+  "Frozen output: ../measure_outputs/modul_7_query_inventory.rds\n",
+  "No corpus query, frequency, PMI, query status, or n_mw_Combo value was calculated.\n",
+  sep = ""
+)
+```
+
+# MODUL 7.7a — Freeze and verify the query occurrence and inventory outputs = Freeze and verify occurrence-source mapping (text attribution)
+
+```{r}
+# MODUL 7.7a — Freeze and verify the query occurrence and inventory outputs
+
+saveRDS(m7_query_occurrences, "../measure_outputs/modul_7_query_occurrences.rds", version = 3)
+saveRDS(modul_7_query_inventory, "../measure_outputs/modul_7_query_inventory.rds", version = 3)
+
+m7_query_occurrences_verify <- readRDS("../measure_outputs/modul_7_query_occurrences.rds")
+modul_7_query_inventory_verify <- readRDS("../measure_outputs/modul_7_query_inventory.rds")
+
+stopifnot(
+  identical(m7_query_occurrences, m7_query_occurrences_verify),
+  identical(modul_7_query_inventory, modul_7_query_inventory_verify)
+)
+
+m7_query_occurrences <- m7_query_occurrences_verify
+modul_7_query_inventory <- modul_7_query_inventory_verify
+
+cat(
+  "MODUL 7.7 outputs frozen and verified.\n",
+  "Frozen occurrence output: ../measure_outputs/modul_7_query_occurrences.rds\n",
+  "Frozen query inventory: ../measure_outputs/modul_7_query_inventory.rds\n",
+  sep = ""
+)
+```
+
+# deleted: # MODUL 7.8 — Preview the minimal DeReKo/KorAP pilot
+
+# Note about the Corpus: Institut für Deutsche Sprache (2026): Deutsches Referenzkorpus DeReKo / Archiv der Korpora geschriebener Gegenwartssprache. Mannheim: Leibniz-Institut für Deutsche Sprache. Online verfügbar unter: https://ids-mannheim.de. 
+
+Für das DeReKo-Korpus:Kupietz, M., Belica, H., Keibel, H., & Witt, A. (2010). The German Reference Corpus DeReKo: A primordial corpus for linguistic research. In Proceedings of the 7th International Conference on Language Resources and Evaluation (LREC 2010) (pp. 1848–1854). Valletta, Malta: European Language Resources Association (ELRA) [1.2].Für die KorAP-Infrastruktur:Bański, P., Diewald, N., Hanl, M., Kupietz, M., & Witt, A. (2014). Accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 14th Conference of the European Chapter of the Association for Computational Linguistics (EACL 2014) — Software Demonstrations (pp. 5–8). Gothenburg, Sweden: Association for Computational Linguistics [1.2].Für das R-Package:Kupietz, M., Margaretha, E., & Diewald, N. (2020). RKorAPClient: An R package for accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 12th International Conference on Language Resources and Evaluation (LREC 2020) (pp. 7017–7023). Marseille, France: European Language Resources Association (ELRA) [1.2].
+
+
+# deleted: MODUL 7.8 — Part 1: Validation, Connection & API Helpers
+
+# deleted: MODUL 7.8 — Part 2: Query the Three PMI Strata
+
+# deleted: MODUL 7.8 — Part 3: Diagnostics, Decision & Freeze
+
+
+# MODUL 7.9 — Part 1: Initialize the Resumable Query Cache
+
+MODUL 7.9 executes the 747 unique corpus queries through a resumable cache, saves each result incrementally, and audits that every query has a valid status with no missing or duplicated rows. The querying cells are retained as a disabled reconstruction path, while the completed cache audit remains active.
+
+```{r}
+#| eval: false
+# MODUL 7.9 — Part 1: Initialize the resumable query cache
+
+library(RKorAPClient)
+library(dplyr)
+library(stringr)
+
+inventory_path <- "../measure_outputs/modul_7_query_inventory.rds"
+cache_path <- "../measure_outputs/modul_7_pmi_query_cache.rds"
+pause_seconds <- 1.2
+vc_baseline <- "creationDate since 2010"
+
+query_inventory <- readRDS(inventory_path)
+
+stopifnot(
+  nrow(query_inventory) == 747L,
+  !anyDuplicated(query_inventory$query_id)
+)
+
+if ("text_id" %in% names(query_inventory))
+  stopifnot(!any(unlist(query_inventory$text_id) == "BASIC_GEMINI_NATIVE_001"))
+
+k <- RKorAPClient::KorAPConnection(verbose = FALSE, cache = TRUE)
+query_cache <- if (file.exists(cache_path)) {
+  readRDS(cache_path)
+} else {
+  tibble::tibble(query_id = character())
+}
+
+if (nrow(query_cache) > 0L)
+  stopifnot(!anyDuplicated(query_cache$query_id), all(query_cache$query_id %in% query_inventory$query_id))
+
+todo_queries <- query_inventory |>
+  dplyr::filter(!query_id %in% query_cache$query_id) |>
+  dplyr::arrange(query_id)
+
+status_of <- function(f, p = NA_real_) {
+  if (!is.finite(f)) "failed" else if (f == 0) "unattested" else if (is.finite(p)) "ok" else "frequency_only"
+}
+
+retry_call <- function(f, attempts = 2L) {
+  for (a in seq_len(attempts)) {
+    out <- tryCatch(f(), error = identity)
+    if (!inherits(out, "error")) return(out)
+    if (a < attempts) Sys.sleep(10 * a)
+  }
+  stop(out)
+}
+
+make_row <- function(row, frequency = NA_real_, pmi = NA_real_, N = NA_real_,
+                     marginals = numeric(), method = NA_character_, status = "failed",
+                     started = Sys.time(), diagnostic = NA_character_) {
+  tibble::tibble(
+    query_id = row$query_id[[1]], query_mode = row$query_mode[[1]],
+    token_n_in_w = as.integer(row$token_n_in_w[[1]]), pmi_window = row$pmi_window[[1]],
+    corpus_frequency = frequency, corpus_pmi = if (status == "ok") pmi else NA_real_,
+    corpus_total_N = N, marginal_frequencies = list(marginals),
+    pmi_method = if (status == "ok") method else NA_character_,
+    pmi_basis_valid = status == "ok" && is.finite(pmi), query_status = status,
+    reference_source = "DeReKo", query_date = Sys.Date(),
+    elapsed_seconds = as.numeric(difftime(Sys.time(), started, units = "secs")),
+    response_diagnostic = diagnostic
+  )
+}
+
+cat("Cached:", nrow(query_cache), "\nRemaining:", nrow(todo_queries), "\n")
+```
+
+
+# MODUL 7.9 — Part 2: Query and Checkpoint Missing Inventory Rows
+
+```{r}
+#| eval: false
+# MODUL 7.9 — Part 2: Query and Checkpoint Missing Inventory Rows
+
+run_query <- function(row) {
+  started <- Sys.time()
+
+  tryCatch({
+    words <- stringr::str_split(stringr::str_squish(row$pmi_window[[1]]), "\\s+")[[1]]
+
+    if (row$query_mode[[1]] == "pairwise_collocation") {
+      stopifnot(length(words) == 2L)
+
+      res <- retry_call(function() RKorAPClient::collocationScoreQuery(
+        k, node = words[[1]], collocate = words[[2]], vc = vc_baseline,
+        leftContextSize = 3L, rightContextSize = 3L, smoothingConstant = 0,
+        lemmatizeNodeQuery = FALSE, lemmatizeCollocateQuery = FALSE,
+        withinSpan = "base/s=s"
+      ))
+
+      frequency <- as.numeric(res$O[[1]])
+      pmi <- as.numeric(res$pmi[[1]])
+      status <- status_of(frequency, pmi)
+
+      make_row(
+        row, frequency, pmi, as.numeric(res$N[[1]]),
+        c(q0 = as.numeric(res$O1[[1]]), q1 = as.numeric(res$O2[[1]])),
+        "pairwise_functor_frame_PMI", status, started
+      )
+    } else {
+      n <- as.integer(row$token_n_in_w[[1]])
+      stopifnot(n %in% c(2L, 3L), length(words) == n)
+
+      queries <- c(
+        paste(sprintf('[orth="%s"]', words), collapse = " "),
+        sprintf('[orth="%s"]', words)
+      )
+
+      res <- retry_call(function() RKorAPClient::frequencyQuery(
+        k, query = queries, vc = vc_baseline, ql = "poliqarp", expand = TRUE
+      ))
+
+      frequency <- as.numeric(res$totalResults[[1]])
+      marginals <- as.numeric(res$totalResults[-1])
+      totals <- unique(as.numeric(res$total))
+      totals <- totals[is.finite(totals)]
+      N <- if (length(totals) == 1L) totals[[1]] else NA_real_
+
+      valid <- is.finite(frequency) && frequency > 0 && is.finite(N) && N > 0 &&
+        length(marginals) == n && all(is.finite(marginals) & marginals > 0)
+
+      pmi <- if (valid)
+        log2(frequency) + (n - 1L) * log2(N) - sum(log2(marginals))
+      else NA_real_
+
+      status <- status_of(frequency, pmi)
+
+      make_row(
+        row, frequency, pmi, N,
+        stats::setNames(marginals, paste0("q", 0:(n - 1L))),
+        paste0("exact_sliding_window_PMI", n), status, started
+      )
+    }
+  }, error = function(e) make_row(row, started = started, diagnostic = conditionMessage(e)))
+}
+query_cache <- readRDS(cache_path)
+
+todo_queries <- readRDS("../measure_outputs/modul_7_query_inventory.rds") |>
+  dplyr::anti_join(query_cache |> dplyr::select(query_id), by = "query_id")
+
+stopifnot(
+  nrow(query_cache) + nrow(todo_queries) == 747L,
+  !anyDuplicated(query_cache$query_id),
+  !anyDuplicated(todo_queries$query_id),
+  !any(todo_queries$query_id %in% query_cache$query_id)
+)
+
+message(
+  "Cached: ", nrow(query_cache), " / 747; ",
+  "Remaining: ", nrow(todo_queries)
+)
+if (nrow(todo_queries) > 0L) {
+  for (i in seq_len(nrow(todo_queries))) {
+    row <- todo_queries[i, ]
+    stopifnot(!row$query_id[[1]] %in% query_cache$query_id)
+
+    query_cache <- dplyr::bind_rows(query_cache, run_query(row))
+    stopifnot(!anyDuplicated(query_cache$query_id))
+    saveRDS(query_cache, cache_path, version = 3)
+    Sys.sleep(pause_seconds)
+
+    if (i %% 25L == 0L || i == nrow(todo_queries))
+      message("Cached: ", nrow(query_cache), " / 747; current run: ", i, " / ", nrow(todo_queries))
+  }
+}
+```
+
+# Note: Parts 1 and 2 belong together: Part 1 defines the connection and helper functions, while Part 2 uses them. Both are retained as a documented reconstruction path but are not executed during HTML rendering.
+
+# MODUL 7.9 — Part 3: Reload and Audit the Query Cache
+
+```{r}
+# MODUL 7.9 — Part 3: Reload and Audit the Query Cache
+
+inventory_path <- "../measure_outputs/modul_7_query_inventory.rds"
+cache_path <- "../measure_outputs/modul_7_pmi_query_cache.rds"
+
+stopifnot(
+  file.exists(inventory_path), 
+  file.exists(cache_path)
+  )
+
+query_inventory <- readRDS(inventory_path)
+
+query_cache <- readRDS(cache_path) |>
+  dplyr::arrange(match(query_id, query_inventory$query_id))
+
+required_fields <- c(
+  "query_id", "query_mode", "token_n_in_w", "pmi_window",
+  "corpus_frequency", "corpus_pmi", "query_status",
+  "reference_source", "query_date", "response_diagnostic"
+)
+
+missing_queries <- dplyr::anti_join(
+  query_inventory |> dplyr::select(query_id),
+  query_cache |> dplyr::select(query_id),
+  by = "query_id"
+)
+
+stopifnot(
+  all(required_fields %in% names(query_cache)),
+  nrow(query_cache) == 747L,
+  nrow(missing_queries) == 0L,
+  !anyDuplicated(query_cache$query_id),
+  setequal(query_cache$query_id, query_inventory$query_id),
+  all(query_cache$query_status %in% c("ok", "unattested", "frequency_only", "failed")),
+  all(is.finite(query_cache$corpus_pmi[query_cache$query_status == "ok"])),
+  all(is.na(query_cache$corpus_pmi[query_cache$query_status != "ok"]))
+)
+
+print(query_cache |> dplyr::count(query_mode, token_n_in_w, query_status), n = Inf)
+
+cat(
+  "\nMODUL 7.9 cache audit\n",
+  "Cached queries:  ", nrow(query_cache), "\n",
+  "Missing queries: ", nrow(missing_queries), "\n",
+  "Failed queries:  ", sum(query_cache$query_status == "failed"), "\n",
+  "Cache path:      ", cache_path, "\n",
+  sep = ""
+)
+
+cat("All 747 globally unique queries are cached and frozen.\n")
+```
+
+# Note: Part 3 liest den fertigen Cache bereits ein und auditiert ihn. Ein erneutes Speichern ist redundant.
+
+# MODUL 7.10 — Part 1: Reload and Mapping to Occurrence Level
+MODUL 7.10 reconnects the 747 globally deduplicated DeReKo queries with the original 752 occurrences in the three target texts.
+
+Its importance lies in the fact that the query cache contains only one result per unique query, while the analysis requires text-level attribution. MODUL 7.10 therefore:
+
+- maps each corpus frequency and PMI value back to its original text occurrence;
+- preserves candidate_type, window size, sentence, and window_id_control;
+- reconstructs text-internal multiword combinations;
+- calculates n_mw_Combo and occurrence-weighted PMI diagnostics;
+- creates the analytical basis for all final text-level PMI summaries and reporting tables.
+
+Without MODUL 7.10, the corpus results would remain detached from the texts and could not be interpreted as text-level distributional-plausibility measures.
+
+```{r}
+
+# MODUL 7.10 — Part 1: Reload and Mapping to Occurrence Level
+
+query_occurrences <- readRDS("../measure_outputs/modul_7_query_occurrences.rds")
+query_inventory <- readRDS("../measure_outputs/modul_7_query_inventory.rds")
+query_cache <- readRDS("../measure_outputs/modul_7_pmi_query_cache.rds")
+
+required_occurrence_fields <- c(
+  "query_mode", "token_n_in_w", "pmi_window", "candidate_type",
+  "window_id_control", "text_id", "sentence_id"
+)
+
+stopifnot(
+  all(required_occurrence_fields %in% names(query_occurrences)),
+  nrow(query_occurrences) == 752L,
+  nrow(query_inventory) == 747L,
+  nrow(query_cache) == 747L,
+  !anyDuplicated(query_occurrences$window_id_control),
+  !anyDuplicated(query_cache$query_id),
+  setequal(unique(query_occurrences$candidate_type), c(
+    "x2a1_nominal", "x2a2_predicative", "x2b",
+    "x2c1_subc_sw", "x2c2_cor_sw"
+  ))
+)
+
+# Attach the internal API mapping key
+query_key <- query_inventory |>
+  dplyr::select(query_id, query_mode, token_n_in_w, pmi_window)
+
+stopifnot(
+  !anyDuplicated(query_key[c("query_mode", "token_n_in_w", "pmi_window")])
+)
+
+query_occurrences <- query_occurrences |>
+  dplyr::left_join(
+    query_key,
+    by = c("query_mode", "token_n_in_w", "pmi_window")
+  )
+
+stopifnot(!anyNA(query_occurrences$query_id))
+
+# Map the deduplicated query results back to all 752 occurrences
+result_fields <- c(
+  "query_id", "corpus_frequency", "corpus_pmi", "query_status",
+  "reference_source", "query_date", "response_diagnostic"
+)
+
+enriched_occurrences <- query_occurrences |>
+  dplyr::left_join(
+    query_cache |> dplyr::select(dplyr::all_of(result_fields)),
+    by = "query_id"
+  ) |>
+  dplyr::add_count(
+    text_id, candidate_type, query_mode, token_n_in_w, pmi_window,
+    name = "n_mw_Combo"
+  )
+
+stopifnot(
+  nrow(enriched_occurrences) == 752L,
+  !anyDuplicated(enriched_occurrences$window_id_control),
+  !anyNA(enriched_occurrences$query_status),
+  nrow(dplyr::anti_join(query_occurrences, query_cache, by = "query_id")) == 0L,
+  dplyr::n_distinct(enriched_occurrences$text_id) == 3L,
+  !any(enriched_occurrences$text_id == "BASIC_GEMINI_NATIVE_001"),
+  all(enriched_occurrences$n_mw_Combo >= 1L),
+  all(is.finite(enriched_occurrences$corpus_pmi[
+    enriched_occurrences$query_status == "ok"
+  ])),
+  all(is.na(enriched_occurrences$corpus_pmi[
+    enriched_occurrences$query_status != "ok"
+  ]))
+)
+
+cat(
+  "MODUL 7.10 Part 1 completed.\n",
+  "Occurrence rows: ", nrow(enriched_occurrences), "\n",
+  "Mapped query IDs: ", sum(!is.na(enriched_occurrences$query_id)), "\n",
+  "Texts: ", dplyr::n_distinct(enriched_occurrences$text_id), "\n",
+  sep = ""
+)
+
+
+```
+
+# MODUL 7.10 — Part 2: Text-Internal Combinations and Diagnostics
+
+```{r}
+# MODUL 7.10 — Part 2: Text-Internal Combinations and Diagnostics
+
+mwCombo_by_text <- enriched_occurrences |>
+  dplyr::group_by(
+    text_id, candidate_type, query_mode,
+    token_n_in_w, pmi_window, query_id
+  ) |>
+  dplyr::summarise(
+    n_mw_Combo = dplyr::first(n_mw_Combo),
+    window_id_control = list(window_id_control),
+    sentence_id = list(unique(sentence_id)),
+    corpus_frequency = dplyr::first(corpus_frequency),
+    corpus_pmi = dplyr::first(corpus_pmi),
+    query_status = dplyr::first(query_status),
+    reference_source = dplyr::first(reference_source),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    pmi_contribution = dplyr::if_else(
+      query_status == "ok",
+      corpus_pmi * n_mw_Combo,
+      NA_real_
+    )
+  )
+
+stopifnot(
+  sum(mwCombo_by_text$n_mw_Combo) == 752L,
+  !anyDuplicated(
+    mwCombo_by_text[
+      c("text_id", "candidate_type", "query_mode",
+        "token_n_in_w", "pmi_window")
+    ]
+  )
+)
+
+text_level_diagnostics <- mwCombo_by_text |>
+  dplyr::group_by(text_id, candidate_type) |>
+  dplyr::summarise(
+    total_mwCombo_occurrences = sum(n_mw_Combo),
+    n_unique_mwCombo = dplyr::n(),
+    n_returned_mwCombo = sum(query_status == "ok"),
+    n_returned_occurrences = sum(n_mw_Combo[query_status == "ok"]),
+    n_unattested_mwCombo = sum(query_status == "unattested"),
+    n_frequency_only_mwCombo = sum(query_status == "frequency_only"),
+    n_failed_mwCombo = sum(query_status == "failed"),
+    unweighted_mean_pmi = if (any(query_status == "ok"))
+      mean(corpus_pmi[query_status == "ok"]) else NA_real_,
+    pmi_n_mwCombo_sum = if (any(query_status == "ok"))
+      sum(pmi_contribution[query_status == "ok"]) else NA_real_,
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    n_repeated_mwCombo_occurrences =
+      total_mwCombo_occurrences - n_unique_mwCombo,
+    mwCombo_repetitivity =
+      n_repeated_mwCombo_occurrences / total_mwCombo_occurrences,
+    occurrence_weighted_mean_pmi = dplyr::if_else(
+      n_returned_occurrences > 0L,
+      pmi_n_mwCombo_sum / n_returned_occurrences,
+      NA_real_
+    )
+  )
+
+measure_status <- text_level_diagnostics |>
+  dplyr::transmute(
+    text_id,
+    candidate_type,
+    measure_status = dplyr::if_else(
+      n_returned_mwCombo > 0L,
+      "available",
+      "not_returned"
+    )
+  )
+
+x2a_occurrences <- enriched_occurrences |>
+  dplyr::filter(candidate_type %in% c("x2a1_nominal", "x2a2_predicative"))
+
+x2b_occurrences <- enriched_occurrences |>
+  dplyr::filter(candidate_type == "x2b")
+
+x2c_occurrences <- enriched_occurrences |>
+  dplyr::filter(candidate_type %in% c("x2c1_subc_sw", "x2c2_cor_sw"))
+
+cat(
+  "MODUL 7.10 Part 2 completed.\n",
+  "Unique text-internal mwCombos: ", nrow(mwCombo_by_text), "\n",
+  "Reconstructed occurrence total: ", sum(mwCombo_by_text$n_mw_Combo), "\n",
+  sep = ""
+)
+```
+
+# delited: Confirmation before Part 3
+
+# MODUL 7.10 — Part 3: Final Audit, Asset Freeze, and Reporting
+
+```{r}
+# MODUL 7.10 — Part 3: Final Audit, Asset Freeze, and Reporting
+
+library(dplyr)
+
+modul_7_pmi_final_audit <- tibble::tibble(
+  n_occurrence_rows = nrow(enriched_occurrences), n_unique_queries = nrow(query_cache), n_unique_queries_ok = sum(query_cache$query_status == "ok"),
+  n_occurrence_rows_ok = sum(enriched_occurrences$query_status == "ok"), n_unique_mwCombo_by_text = nrow(mwCombo_by_text),
+  n_repeated_mwCombo_occurrences = sum(text_level_diagnostics$n_repeated_mwCombo_occurrences), n_missing_query_results = sum(is.na(enriched_occurrences$query_status)),
+  n_failed_queries = sum(query_cache$query_status == "failed"), n_gemini_rows = sum(enriched_occurrences$text_id == "BASIC_GEMINI_NATIVE_001")
+)
+
+stopifnot(
+  modul_7_pmi_final_audit$n_occurrence_rows == 752L, modul_7_pmi_final_audit$n_unique_queries == 747L, modul_7_pmi_final_audit$n_unique_queries_ok == 629L,
+  modul_7_pmi_final_audit$n_occurrence_rows_ok == 633L,
+  modul_7_pmi_final_audit$n_unique_mwCombo_by_text == 752L, modul_7_pmi_final_audit$n_repeated_mwCombo_occurrences == 0L,
+  modul_7_pmi_final_audit$n_missing_query_results == 0L, modul_7_pmi_final_audit$n_failed_queries == 0L, modul_7_pmi_final_audit$n_gemini_rows == 0L,
+  !anyDuplicated(query_inventory[c("query_mode", "token_n_in_w", "pmi_window")])
+)
+
+modul_7_pmi_final_audit <- modul_7_pmi_final_audit |>
+  dplyr::mutate(final_audit_passed = TRUE)
+
+# Reload the frozen candidate layers for the final bundle
+x2a_functor_candidates <- readRDS("../measure_outputs/x2a_functor_candidates.rds")
+x2b_sliding_windows <- readRDS("../measure_outputs/x2b_sliding_windows.rds")
+x2c_connector_sw <- readRDS("../measure_outputs/x2c_connector_sw.rds")
+
+# Freeze and independently reload the complete x2 family
+x2_distributional_plausibility_bundle <- list(
+  x2a_functor_candidates = x2a_functor_candidates, x2b_sliding_windows = x2b_sliding_windows, x2c_connector_sw = x2c_connector_sw,
+  query_occurrences = query_occurrences, query_inventory = query_inventory, query_results = query_cache, enriched_occurrences = enriched_occurrences,
+  x2a_occurrences = x2a_occurrences, x2b_occurrences = x2b_occurrences, x2c_occurrences = x2c_occurrences, mwCombo_by_text = mwCombo_by_text,
+  text_level_diagnostics = text_level_diagnostics, measure_status = measure_status, final_audit = modul_7_pmi_final_audit
+)
+
+final_x2_path <- "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
+saveRDS(x2_distributional_plausibility_bundle, final_x2_path, version = 3)
+x2_distributional_plausibility_bundle <- readRDS(final_x2_path)
+
+stopifnot(
+  nrow(x2_distributional_plausibility_bundle$enriched_occurrences) == 752L,
+  nrow(x2_distributional_plausibility_bundle$query_results) == 747L,
+  isTRUE(x2_distributional_plausibility_bundle$final_audit$final_audit_passed)
+)
+
+# Output display
+print(x2_distributional_plausibility_bundle$text_level_diagnostics |> dplyr::arrange(text_id, candidate_type), n = Inf, width = Inf)
+print(x2_distributional_plausibility_bundle$final_audit, width = Inf)
+
+cat(
+  "\n✔ MODUL 7.10 completed and frozen.\n",
+  "Unique queries with valid PMI: ", sum(query_cache$query_status == "ok"), "\n",
+  "Occurrence rows with valid PMI: ", sum(enriched_occurrences$query_status == "ok"), "\n",
+  "Final output: ", final_x2_path, "\n", sep = ""
+)
+```
+
+# MODUL 7.10b — Calculate and freeze the PMI frequency-sensitivity audit
+7.10b creates:
+
+modul_7_pmi_frequency_sensitivity_audit.rds
+pmi_rows
+frequency_sensitivity_audit
+m7_report_paths
+
+These are required for the final reporting sequence.
+
+```{r}
+# MODUL 7.10b — Calculate and freeze the PMI frequency-sensitivity audit
+
+m7_report_paths <- c(
+  source = "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds",
+  sensitivity = "../measure_outputs/modul_7_pmi_frequency_sensitivity_audit.rds",
+  summary = "../measure_outputs/modul_7_pmi_final_summary.rds",
+  tables = "../measure_outputs/modul_7_pmi_final_tables.rds",
+  main_csv = "../measure_outputs/modul_7_pmi_final_results_table.csv",
+  sensitivity_csv = "../measure_outputs/modul_7_pmi_frequency_sensitivity_table.csv",
+  final = "../measure_outputs/modul_7_x2_distributional_plausibility_reporting_bundle.rds"
+)
+
+x2_distributional_plausibility_bundle <- readRDS(m7_report_paths[["source"]])
+mwCombo_by_text <- x2_distributional_plausibility_bundle$mwCombo_by_text
+
+stopifnot(all(c(
+  "query_id", "text_id", "candidate_type", "token_n_in_w", "n_mw_Combo",
+  "corpus_frequency", "corpus_pmi", "query_status"
+) %in% names(mwCombo_by_text)))
+
+pmi_rows <- mwCombo_by_text |>
+  dplyr::filter(query_status == "ok", !is.na(corpus_pmi), !is.na(corpus_frequency)) |>
+  dplyr::mutate(token_n_in_w = as.integer(token_n_in_w))
+
+frequency_sensitivity_audit <- pmi_rows |>
+  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
+  dplyr::summarise(
+    n_pmi = dplyr::n(),
+    min_corpus_frequency = min(corpus_frequency),
+    median_corpus_frequency = median(corpus_frequency),
+    n_singletons = sum(corpus_frequency == 1),
+    singleton_share_pct = 100 * mean(corpus_frequency == 1),
+    n_sparse_evidence = sum(corpus_frequency < 5),
+    sparse_evidence_share_pct = 100 * mean(corpus_frequency < 5),
+    mean_pmi_all = mean(corpus_pmi),
+    median_pmi = median(corpus_pmi),
+    mean_pmi_freq_ge2 = if (any(corpus_frequency >= 2)) mean(corpus_pmi[corpus_frequency >= 2]) else NA_real_,
+    mean_pmi_freq_ge5 = if (any(corpus_frequency >= 5)) mean(corpus_pmi[corpus_frequency >= 5]) else NA_real_,
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(text_id, candidate_type, token_n_in_w)
+
+stopifnot(nrow(pmi_rows) == 633L, sum(frequency_sensitivity_audit$n_pmi) == 633L)
+saveRDS(frequency_sensitivity_audit, m7_report_paths[["sensitivity"]], version = 3)
+
+print(frequency_sensitivity_audit, n = Inf, width = Inf)
+cat("\nMODUL 7.10b frozen:", m7_report_paths[["sensitivity"]], "\n")
+```
+
+# Note: 
+
+PMI values were derived from the Mannheim DeReKo reference corpus, reflecting corpus-based distributional association. DeReKo is the world’s largest collection of German-language corpora and an empirical basis for linguistic research. The Mannheim German Reference Corpus and the Corpora of Contemporary Written German at the IDS together constitute the world’s largest linguistically motivated collection, with over 63.8 billion words as of January 2026, and they can be accessed free of charge via COSMAS II and KorAP. (cf. https://www.ids-mannheim.de/en/digspra/pb-s1/projects/corpus-development/). Human-baseline distance has not yet been calculated.
+
+1.000 = everything that could be scored was scored.
+
+Below 1.000 = only part of the eligible material produced a valid PMI value.
+
+| Column           | Meaning                        | Format     |
+| ---------------- | ------------------------------ | ---------- |
+| `text_id`        | Text origin                    | text       |
+| `candidate_type` | x2 branch                      | text       |
+| `token_n_in_w`   | 2-token or 3-token calculation | integer    |
+| `n_total`        | approved queried combinations  | integer    |
+| `n_ok`           | combinations with valid PMI    | integer    |
+| `pmi_coverage`   | `n_ok / n_total`               | 3 decimals |
+| `mean_pmi`       | mean valid PMI in bits         | 3 decimals |
+| `median_pmi`     | robust central PMI             | 3 decimals |
+
+- 
+- ChatGPT’s six approved functor–object combinations had a mean PMI of 3.569, compared with 0.816 across eleven Human combinations, producing an observed difference of 2.753. However, this difference was based on only six ChatGPT and eleven Human combinations and is therefore interpreted as an exploratory text-specific pattern rather than a general model effect. Therefore, more texts per source would be required before presenting it as a real model-level contrast.
+- Claude generated relatively few connector-based x2c windows. This pattern should be inspected alongside its y6 function-word and connector proportions: agreement would support comparatively lower connector density, whereas divergence would suggest that the reduced x2c count is mainly attributable to text length, clause length, or the restricted connector-window extraction rules.
+PMI is a base-2 logarithmic association measure, reported in bits.
+
+PMI	Interpretation under independence
+0	observed as often as expected by chance
+1	2 times the expected rate
+2	4 times the expected rate
+3	8 times the expected rate
+−1	half the expected rate
+8	256 times the expected rate
+
+A positive PMI therefore indicates that the words or sequence occur together more often than expected from their individual corpus frequencies. There is no fixed upper bound. That is why very rare combinations can produce very high PMI.
+
+An unattested combination does not receive PMI 0. Its mathematical PMI would be undefined because the joint probability is zero. 
+Frequency and PMI answer different questions:
+
+Quantity	            Question
+corpus_frequency	    How often did the combination occur?
+corpus_pmi	    How unexpectedly strong is the combination relative to the frequencies of its individual words?
+
+A frequent combination can have low PMI when its words are individually very frequent. A rare combination can have high PMI when its component words are also rare. However, a frequency of one does not automatically produce an odd PMI. The value also depends on the marginal frequencies and corpus total. Nevertheless, singleton and very-low-frequency combinations are exactly where PMI estimates are least stable.
+
+* What does frequency_only mean?
+In this implementation, frequency_only means that the combination had a returned joint corpus frequency, but one or more quantities required for PMI were unavailable or invalid. For exact MWS combinations, valid PMI requires the frequency of the full combination, each component’s marginal frequency, and a valid common corpus/event-space total. If the full combination frequency exists but the complete PMI denominator cannot be constructed, the row receives query_status = frequency_only, corpus_frequency = returned value, and corpus_pmi = NA. frequency_only does not correct rare-event bias; it merely prevents an invalid PMI from being calculated. It belongs in the technical audit, not in the final association table.
+
+What does unattested mean?
+query_status = unattested, corpus_frequency = 0, and corpus_pmi = NA. The exact pair or sequence was not found in the selected DeReKo virtual corpus. PMI is not set to zero because zero would mean “observed at exactly the expected rate.” With zero observed co-occurrences, PMI is mathematically undefined in the ordinary unsmoothed formulation.
+What exactly is an mwCombo? Term meaning in this project:
+1. mwCombo	An extracted pair or exact multiword-window candidate,
+2. MWS	A sequence containing two or more words with variying associative strength,
+3. collocation	A sequence whose components show sufficient statistical contingency (cf. Yi 2021)
+4 formulaicity	Broader degree of conventionalization or entrenchment; PMI captures only one statistical dimension.
+Consequently, the pipeline asks:
+
+To what degree does each extracted mwCombo display corpus-based contingency?
+
+High PMI indicates that its components combine more frequently than predicted from their marginal frequencies. Low PMI indicates weak association. An unattested combo has no estimable unsmoothed PMI.
+
+# Inspect frozen PMI sufficient statistics
+
+```{r}
+# MODUL 7.10c — Calculate and freeze the final PMI summary
+
+final_pmi_summary <- pmi_rows |>
+  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
+  dplyr::summarise(
+    n_pmi = dplyr::n(),
+    mean_pmi = mean(corpus_pmi),
+    median_pmi = median(corpus_pmi),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(
+    match(candidate_type, c(
+      "x2a1_nominal", "x2a2_predicative", "x2b",
+      "x2c1_subc_sw", "x2c2_cor_sw"
+    )),
+    match(text_id, c(
+      "HUMAN_BASELINE_001",
+      "BASIC_CHATGPT_NATIVE_001",
+      "BASIC_CLAUDE_NATIVE_001"
+    )),
+    token_n_in_w
+  )
+
+stopifnot(
+  sum(final_pmi_summary$n_pmi) == 633L,
+  !anyDuplicated(final_pmi_summary[c("text_id", "candidate_type", "token_n_in_w")]),
+  all(final_pmi_summary$token_n_in_w %in% c(2L, 3L))
+)
+
+saveRDS(final_pmi_summary, m7_report_paths[["summary"]], version = 3)
+
+print(final_pmi_summary, n = Inf, width = Inf)
+cat("\nMODUL 7.10c frozen:", m7_report_paths[["summary"]], "\n")
+```
+
+# MODUL 7.10d — Export the final PMI presentation tables
+
+```{r}
+# MODUL 7.10d — Export the final PMI presentation tables
+
+fmt3 <- function(x) ifelse(is.na(x), NA_character_, sprintf("%.3f", x))
+
+branch_order <- c("x2a1_nominal", "x2a2_predicative", "x2b", "x2c1_subc_sw", "x2c2_cor_sw")
+text_order <- c("HUMAN_BASELINE_001", "BASIC_CHATGPT_NATIVE_001", "BASIC_CLAUDE_NATIVE_001")
+
+final_pmi_table <- final_pmi_summary |>
+  dplyr::arrange(match(candidate_type, branch_order), match(text_id, text_order), token_n_in_w) |>
+  dplyr::mutate(
+    token_n_in_w = as.integer(token_n_in_w),
+    n_pmi = as.integer(n_pmi),
+    dplyr::across(c(mean_pmi, median_pmi), fmt3)
+  )
+
+frequency_sensitivity_table <- frequency_sensitivity_audit |>
+  dplyr::arrange(match(candidate_type, branch_order), match(text_id, text_order), token_n_in_w) |>
+  dplyr::transmute(
+    text_id,
+    candidate_type,
+    token_n_in_w = as.integer(token_n_in_w),
+    n_pmi = as.integer(n_pmi),
+    singleton_share_pct = fmt3(singleton_share_pct),
+    sparse_evidence_share_pct = fmt3(sparse_evidence_share_pct),
+    mean_pmi_all = fmt3(mean_pmi_all),
+    mean_pmi_freq_ge5 = fmt3(mean_pmi_freq_ge5)
+  )
+
+modul_7_pmi_final_tables <- list(
+  main_results = final_pmi_table,
+  frequency_sensitivity = frequency_sensitivity_table
+)
+
+saveRDS(modul_7_pmi_final_tables, m7_report_paths[["tables"]], version = 3)
+readr::write_csv(final_pmi_table, m7_report_paths[["main_csv"]], na = "NA")
+readr::write_csv(frequency_sensitivity_table, m7_report_paths[["sensitivity_csv"]], na = "NA")
+
+print(final_pmi_table, n = Inf, width = Inf)
+cat("\nMODUL 7.10d tables exported.\n")
+```
+
+
+# MODUL 7.10 d1 — Calculate whole-text x2 family summaries TOMORROW EXCLUDE %%%
+
+```{r}
+# MODUL 7.10c1 — Calculate whole-text x2 family summaries
+
+x2a_text_summary <- pmi_rows |>
+  dplyr::filter(
+    candidate_type %in% c("x2a1_nominal", "x2a2_predicative"),
+    token_n_in_w == 2L
+  ) |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(
+    x2a_functor_based_text_n_pmi2 = dplyr::n(),
+    x2a_functor_based_text_mean_pmi2 = mean(corpus_pmi),
+    x2a_functor_based_text_median_pmi2 = median(corpus_pmi),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    x2a_functor_based_text_chance_normalized_association_pct =
+      100 * 2^x2a_functor_based_text_mean_pmi2
+  )
+
+x2_sequence_text_summary <- pmi_rows |>
+  dplyr::filter(
+    candidate_type %in% c("x2b", "x2c1_subc_sw", "x2c2_cor_sw")
+  ) |>
+  dplyr::group_by(text_id, token_n_in_w) |>
+  dplyr::summarise(
+    n_pmi = dplyr::n(),
+    mean_pmi = mean(corpus_pmi),
+    median_pmi = median(corpus_pmi),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    chance_normalized_association_pct = 100 * 2^mean_pmi
+  ) |>
+  tidyr::pivot_wider(
+    names_from = token_n_in_w,
+    values_from = c(
+      n_pmi, mean_pmi, median_pmi,
+      chance_normalized_association_pct
+    ),
+    names_glue = "x2_sequence_based_text_{.value}_pmi{token_n_in_w}"
+  )
+
+x2_text_family_summary <- x2a_text_summary |>
+  dplyr::left_join(x2_sequence_text_summary, by = "text_id") |>
+  dplyr::arrange(match(text_id, text_order))
+
+print(x2_text_family_summary, n = Inf, width = Inf)
+```
+
+
+# delite tomorrow
+
+```{r}
+# MODUL 7.10b — Prepare Exact-Window Frequency–PMI Data
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(broom)
+
+frequency_pmi_data <- readRDS(
+  "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
+)$mwCombo_by_text |>
+  dplyr::filter(
+    query_status == "ok",
+    candidate_type %in% c("x2b", "x2c1_subc_sw", "x2c2_cor_sw"),
+    corpus_frequency > 0,
+    is.finite(corpus_pmi)
+  ) |>
+  dplyr::mutate(
+    text_id = stats::relevel(factor(text_id), ref = "HUMAN_BASELINE_001"),
+    log_joint_frequency = log10(corpus_frequency)
+  )
+
+stopifnot(
+  !any(frequency_pmi_data$candidate_type %in% c("x2a1_nominal", "x2a2_predicative")),
+  all(frequency_pmi_data$token_n_in_w %in% c(2L, 3L))
+)
+
+print(
+  frequency_pmi_data |>
+    dplyr::count(candidate_type, token_n_in_w, text_id, name = "n_mwCombo"),
+  n = Inf,
+  width = Inf
+)
+```
+
+
+# same but with fitting a model # MODUL 7.11 — Exploratory Stratified Frequency–PMI Interaction Models
+
+```{r}
+# MODUL 7.11 — Stratified Within-Text Frequency–PMI Models
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(broom)
+
+pair_level_data <- readRDS(
+  "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
+)$mwCombo_by_text |>
+  dplyr::filter(
+    query_status == "ok",
+    is.finite(corpus_pmi),
+    corpus_frequency > 0,
+    candidate_type %in% c("x2b", "x2c1_subc_sw", "x2c2_cor_sw")
+  ) |>
+  dplyr::mutate(log_freq = log10(corpus_frequency))
+
+within_text_frequency_pmi_models <- pair_level_data |>
+  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
+  tidyr::nest() |>
+  dplyr::mutate(
+    n_mwCombo = purrr::map_int(data, nrow),
+    n_unique_freq = purrr::map_int(data, ~ dplyr::n_distinct(.x$log_freq)),
+    model_status = dplyr::if_else(
+      n_mwCombo >= 3L & n_unique_freq >= 2L,
+      "fitted",
+      "insufficient_data"
+    ),
+    model = purrr::map2(
+      data,
+      model_status,
+      ~ if (.y == "fitted") stats::lm(corpus_pmi ~ log_freq, data = .x) else NULL
+    ),
+    tidy_out = purrr::map(
+      model,
+      ~ if (is.null(.x)) tibble::tibble() else broom::tidy(.x)
+    ),
+    glance_out = purrr::map(
+      model,
+      ~ if (is.null(.x)) tibble::tibble() else broom::glance(.x)
+    )
+  )
+
+within_text_frequency_pmi_results <- within_text_frequency_pmi_models |>
+  dplyr::select(
+    text_id, candidate_type, token_n_in_w,
+    n_mwCombo, model_status, tidy_out, glance_out
+  ) |>
+  tidyr::unnest(tidy_out) |>
+  dplyr::filter(term == "log_freq") |>
+  dplyr::rename(
+    frequency_pmi_slope = estimate,
+    slope_std_error = std.error,
+    slope_statistic = statistic,
+    slope_p_value = p.value
+  ) |>
+  dplyr::left_join(
+    within_text_frequency_pmi_models |>
+      dplyr::select(text_id, candidate_type, token_n_in_w, glance_out) |>
+      tidyr::unnest(glance_out) |>
+      dplyr::select(text_id, candidate_type, token_n_in_w, r.squared, adj.r.squared),
+    by = c("text_id", "candidate_type", "token_n_in_w")
+  ) |>
+  dplyr::arrange(text_id, candidate_type, token_n_in_w)
+
+print(
+  within_text_frequency_pmi_models |>
+    dplyr::select(
+      text_id, candidate_type, token_n_in_w,
+      n_mwCombo, n_unique_freq, model_status
+    ),
+  n = Inf,
+  width = Inf
+)
+
+print(within_text_frequency_pmi_results, n = Inf, width = Inf)
+```
+# Table name: Stratified within-text joint-frequency–PMI dependency analysis.
+
+# # MODUL 7.12 — Plot Exact-Window Frequency–PMI Relationships
+
+```{r}
+# MODUL 7.11a — Plot Within-Text Frequency–PMI Relationships
+
+# MODUL 7.11a — Plot Within-Text Frequency–PMI Relationships
+
+plot_data <- pair_level_data |>
+  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
+  dplyr::mutate(n_stratum = dplyr::n()) |>
+  dplyr::ungroup() |>
+  dplyr::filter(n_stratum >= 15L)
+
+frequency_pmi_plot <- ggplot2::ggplot(
+  plot_data,
+  ggplot2::aes(x = log_freq, y = corpus_pmi)
+) +
+  ggplot2::geom_point(alpha = 0.5, size = 0.3) +
+  ggplot2::geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = TRUE,
+    linewidth = 0.8
+  ) +
+  ggplot2::facet_wrap(
+    ~ interaction(text_id, candidate_type, token_n_in_w, sep = " | "),
+    scales = "free_y"
+  ) +
+  ggplot2::labs(
+    title = "Within-text frequency–PMI relationship",
+    subtitle = paste(
+      "Each panel shows one text, branch, and token length;",
+      "only strata with at least 15 valid mwCombos are displayed."
+    ),
+    x = "Joint frequency of the complete mwCombo (log10)",
+    y = "PMI of the same mwCombo (bits)",
+    caption = paste(
+      "x2a1 and x2a2 are excluded.",
+      "Strata with n < 15 are omitted from the figure because",
+      "their fitted trends are unstable;",
+      "but remain preserved in the numerical diagnostics."
+    )
+  ) +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::theme(
+    panel.spacing = grid::unit(0.9, "lines"),
+    strip.text = ggplot2::element_text(face = "bold"),
+    plot.title = ggplot2::element_text(face = "bold"),
+    plot.caption = ggplot2::element_text(hjust = 0)
+  )
+
+print(frequency_pmi_plot)
+```
+# BITTE PRÜFEN 19.07.2026
+A stratified within-text linear regression model was fitted aiming for a diagnostic mean to se how joint frequence is influencing PMI values. For each text, x2b and x2c indices, corpus PMI were modelled as a function of the logarithm of the joint DeReKo frequency of the same exact mwCombo. The analysis was conducted with the motivation to examined whether high PMI values were systematically concentrated among rarely attested combinations, as literature generally indicates . Negative slopes indicate that rarer combinations tended to receive higher PMI values, whereas near-zero slopes indicate little systematic linear frequency dependence and positive slopes indicate increasing PMI with increasing joint frequency. The corresponding R
+2
+ values describe how much of the within-stratum PMI variation was aligned with this linear frequency relationship. Because joint frequency is itself a component of PMI, the regressions are interpreted as descriptive sensitivity diagnostics rather than independent validation or causal models.
+
+Thesis-ready caveat
+
+Only strata containing at least 15 valid mwCombos were included in the visualization to avoid displaying highly unstable fitted trends. All smaller strata remained preserved in the numerical diagnostics. The observations include overlapping windows and originate from one text per source; consequently, the fitted slopes and R
+2
+ values characterize the present texts only and do not constitute model-level comparisons. More texts per source would be required before presenting a real model-level contrast.
+
+
+#
+
+```{r}
+# MODUL 7.11a — Plot Within-Text DeReKo Frequency–PMI Relationships
+
+plot_data <- pair_level_data |>
+  dplyr::group_by(text_id, candidate_type, token_n_in_w) |>
+  dplyr::mutate(n_stratum = dplyr::n()) |>
+  dplyr::ungroup() |>
+  dplyr::filter(n_stratum >= 15L)
+
+frequency_pmi_plot <- ggplot2::ggplot(
+  plot_data,
+  ggplot2::aes(x = log_freq, y = corpus_pmi)
+) +
+  ggplot2::geom_point(alpha = 0.5, size = 0.3) +
+  ggplot2::geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = TRUE,
+    linewidth = 0.8
+  ) +
+  ggplot2::facet_wrap(
+    ~ interaction(text_id, candidate_type, token_n_in_w, sep = " | "),
+    scales = "free_y"
+  ) +
+  ggplot2::labs(
+    title = "Within-text DeReKo frequency–PMI relationship",
+    subtitle = paste(
+      "Each point represents one unique target-text mwCombo;",
+      "the line shows its within-text relationship between joint corpus frequency and PMI."
+    ),
+    x = "Joint DeReKo frequency of the complete mwCombo (log10)",
+    y = "PMI of the same mwCombo (bits)",
+    caption = paste(
+      "x2a1 and x2a2 are excluded. PMI2 and PMI3 are displayed separately.",
+      "Only strata with at least 15 valid mwCombos are shown;",
+      "smaller strata remain available in the numerical diagnostics."
+    )
+  ) +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::theme(
+    panel.spacing = grid::unit(0.9, "lines"),
+    strip.text = ggplot2::element_text(face = "bold"),
+    plot.title = ggplot2::element_text(face = "bold"),
+    plot.caption = ggplot2::element_text(hjust = 0)
+  )
+
+print(frequency_pmi_plot)
+```
+
+
+#
+
+```{r}
+# MODUL 7.10d1 — Freeze the whole-text PMI plot data
+
+# MODUL 7.10d1 — Freeze whole-text PMI plot data
+
+x2_text_family_plot_data <- x2_text_family_summary |>
+  dplyr::select(
+    text_id,
+    x2a_functor_based_text_mean_pmi2,
+    x2a_functor_based_text_median_pmi2,
+    x2_sequence_based_text_mean_pmi_pmi2,
+    x2_sequence_based_text_median_pmi_pmi2,
+    x2_sequence_based_text_mean_pmi_pmi3,
+    x2_sequence_based_text_median_pmi_pmi3
+  ) |>
+  dplyr::rename(
+    x2_sequence_based_text_mean_pmi2 = x2_sequence_based_text_mean_pmi_pmi2,
+    x2_sequence_based_text_median_pmi2 = x2_sequence_based_text_median_pmi_pmi2,
+    x2_sequence_based_text_mean_pmi3 = x2_sequence_based_text_mean_pmi_pmi3,
+    x2_sequence_based_text_median_pmi3 = x2_sequence_based_text_median_pmi_pmi3
+  ) |>
+  tidyr::pivot_longer(
+    -text_id,
+    names_to = c("x2_family", "statistic", "token_n_in_w"),
+    names_pattern = "^(x2a_functor_based|x2_sequence_based)_text_(mean|median)_pmi([23])$",
+    values_to = "pmi"
+  ) |>
+  dplyr::mutate(
+    token_n_in_w = as.integer(token_n_in_w),
+    text_id = factor(text_id, text_order),
+    x2_family = factor(x2_family, c("x2a_functor_based", "x2_sequence_based")),
+    statistic = factor(statistic, c("mean", "median"))
+  ) |>
+  dplyr::arrange(x2_family, token_n_in_w, text_id, statistic)
+
+stopifnot(nrow(x2_text_family_plot_data) == 18L, !anyNA(x2_text_family_plot_data$pmi))
+
+saveRDS(
+  x2_text_family_plot_data,
+  "../measure_outputs/modul_7_x2_text_family_plot_data.rds",
+  version = 3
+)
+
+readr::write_csv(
+  x2_text_family_plot_data,
+  "../measure_outputs/modul_7_x2_text_family_plot_data.csv",
+  na = "NA"
+)
+
+print(
+  x2_text_family_plot_data |>
+    dplyr::mutate(pmi = sprintf("%.3f", pmi)),
+  n = Inf,
+  width = Inf
+)
+```
+
+# MODUL INDEPENDENT  — Calculate and freeze separate sentence-length diagnostics
+
+```{r}
+# MODUL 7.5a — Calculate and freeze separate sentence-length diagnostics
+
+sentence_length_diagnostics <- parsed_S_layer |>
+  dplyr::semi_join(sentence_segment_table, by = c("text_id", "sentence_id")) |>
+  dplyr::mutate(
+    text_label = dplyr::recode(
+      text_id,
+      BASIC_CHATGPT_NATIVE_001 = "ChatGPT",
+      BASIC_CLAUDE_NATIVE_001 = "Claude",
+      BASIC_GEMINI_NATIVE_001 = "Gemini",
+      HUMAN_BASELINE_001 = "Human"
+    )
+  ) |>
+  dplyr::group_by(text_id, text_label) |>
+  dplyr::summarise(
+    n_body_sentences = dplyr::n(),
+    sentence_length_words_mean = mean(n_words, na.rm = TRUE),
+    sentence_length_words_sd = stats::sd(n_words, na.rm = TRUE),
+    sentence_length_words_median = stats::median(n_words, na.rm = TRUE),
+    sentence_length_tokens_mean = mean(n_tokens, na.rm = TRUE),
+    sentence_length_tokens_sd = stats::sd(n_tokens, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  dplyr::arrange(match(text_label, c("Human", "ChatGPT", "Claude", "Gemini")))
+
+stopifnot(
+  nrow(sentence_length_diagnostics) == 4L,
+  sum(sentence_length_diagnostics$n_body_sentences) == 106L,
+  setequal(sentence_length_diagnostics$text_label, c("Human", "ChatGPT", "Claude", "Gemini")),
+  all(is.finite(sentence_length_diagnostics$sentence_length_words_mean))
+)
+
+saveRDS(
+  sentence_length_diagnostics,
+  "../measure_outputs/modul_7_sentence_length_diagnostics.rds",
+  version = 3
+)
+
+sentence_length_diagnostics <- readRDS(
+  "../measure_outputs/modul_7_sentence_length_diagnostics.rds"
+)
+
+print(sentence_length_diagnostics, n = Inf, width = Inf)
+
+cat(
+  "\nSeparate sentence-length diagnostics completed and frozen.\n",
+  "Body sentences represented: ", sum(sentence_length_diagnostics$n_body_sentences), "\n",
+  "Texts represented: ", nrow(sentence_length_diagnostics), "\n",
+  "Gemini included descriptively: yes\n",
+  "PMI measure family affected: no\n",
+  "Frozen output: ../measure_outputs/modul_7_sentence_length_diagnostics.rds\n",
+  sep = ""
+)
+
+```
+
+# MODUL 7.13 — Build Illustrative Within-Text Frequency–PMI Examples  valid table creation for Reporting Results
+```{r}
+# MODUL 7.13 former 7.11b — Build Illustrative Within-Text Frequency–PMI Examples
+
+# MODUL 7.13 — Build Illustrative Within-Text Frequency–PMI Examples
+
+library(dplyr)
+library(purrr)
+
+x2_distributional_plausibility_bundle <- readRDS(
+  "../measure_outputs/modul_7_x2_distributional_plausibility_bundle.rds"
+)
+
+query_sufficient_statistics <- x2_distributional_plausibility_bundle$query_results |>
+  dplyr::select(query_id, corpus_total_N, marginal_frequencies)
+
+frequency_pmi_model_summary <- within_text_frequency_pmi_models |>
+  dplyr::select(text_id, candidate_type, token_n_in_w, n_mwCombo, n_unique_freq)
+
+frequency_pmi_example_pool <- pair_level_data |>
+  dplyr::left_join(query_sufficient_statistics, by = "query_id") |>
+  dplyr::mutate(
+    marginal_frequency_values = purrr::map_chr(
+      marginal_frequencies,
+      ~ paste(sprintf("%.3f", .x), collapse = " | ")
+    ),
+    expected_frequency = purrr::pmap_dbl(
+      list(marginal_frequencies, corpus_total_N, token_n_in_w),
+      \(m, N, n) {
+        if (length(m) == n && all(is.finite(m) & m > 0) && is.finite(N) & N > 0) {
+          exp(sum(log(m)) - (n - 1) * log(N))
+        } else {
+          NA_real_
+        }
+      }
+    ),
+    observed_expected_ratio = corpus_frequency / expected_frequency,
+    recomputed_pmi = log2(observed_expected_ratio)
+  )
+
+frequency_pmi_examples <- dplyr::bind_rows(
+  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_min(corpus_frequency, n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Lowest joint frequency"),
+  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_min(abs(log_freq - median(log_freq)), n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Median joint frequency"),
+  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_max(corpus_frequency, n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Highest joint frequency"),
+  frequency_pmi_example_pool |> dplyr::group_by(text_id, candidate_type, token_n_in_w) |> dplyr::slice_max(corpus_pmi, n = 1, with_ties = FALSE) |> dplyr::mutate(example_type = "Highest PMI")
+) |>
+  dplyr::ungroup() |>
+  dplyr::left_join(frequency_pmi_model_summary, by = c("text_id", "candidate_type", "token_n_in_w")) |>
+  dplyr::select(
+    text_id, candidate_type, token_n_in_w, example_type, pmi_window,
+    corpus_frequency, marginal_frequency_values, expected_frequency,
+    corpus_pmi, recomputed_pmi, n_mwCombo
+  ) |>
+  dplyr::arrange(
+    text_id, candidate_type, token_n_in_w,
+    factor(example_type, c("Lowest joint frequency", "Median joint frequency", "Highest joint frequency", "Highest PMI"))
+  )
+
+stopifnot(all(abs(frequency_pmi_examples$corpus_pmi - frequency_pmi_examples$recomputed_pmi) < 1e-8, na.rm = TRUE))
+
+# Final table generation strictly containing intended columns and exact 0.xxx rounding
+illustrative_frequency_pmi_table <- frequency_pmi_examples |>
+  dplyr::select(-recomputed_pmi) |>
+  dplyr::mutate(
+    dplyr::across(dplyr::any_of(c("token_n_in_w", "n_mwCombo", "corpus_frequency")), as.integer),
+    dplyr::across(dplyr::any_of(c("expected_frequency", "corpus_pmi")), ~ ifelse(is.na(.x), NA_character_, sprintf("%.3f", .x)))
+  )
+
+# Isolated data subset engineered precisely for your plotting requirements
+frequency_pmi_plot_data <- frequency_pmi_examples |>
+  dplyr::select(text_id, candidate_type, corpus_frequency, corpus_pmi)
+
+illustrative_frequency_pmi_table
+```
+# Note: n_mw_Combo=number of multiword combinations produced by the sliding-window logic within one target area
+
+
+# Modul 7.13a Illustrative frequency–PMI table created
+
+```{r}
+cat(
+  "\nIllustrative frequency–PMI table created:",
+  nrow(frequency_pmi_examples), "rows.\n"
+)
+
+print(
+  frequency_pmi_examples |>
+    dplyr::select(
+      text_id, candidate_type,
+      example_type, pmi_window,
+      corpus_frequency, corpus_pmi
+    ) |>
+    # Formats decimals to .xxx string representations cleanly for the print view
+    dplyr::mutate(
+      dplyr::across(
+        dplyr::any_of(c("expected_frequency", "corpus_pmi")), 
+        ~ ifelse(is.na(.x), NA_character_, sprintf("%.3f", .x))
+      )
+    ),
+  n = Inf,
+  width = Inf
+)
+
+```
+#
+
+```{r}
+
+# Audit the 10 largest files in the complete project
+
+project_root <- ".."
+
+project_files <- list.files(
+  path = project_root,
+  recursive = TRUE,
+  full.names = TRUE,
+  all.files = TRUE,
+  no.. = TRUE
+)
+
+top_10_largest_files <- tibble::tibble(
+  file = project_files,
+  size_bytes = file.info(project_files)$size,
+  is_directory = file.info(project_files)$isdir
+) |>
+  dplyr::filter(!is.na(size_bytes), !is_directory) |>
+  dplyr::mutate(
+    file = sub(paste0("^", normalizePath(project_root), "/?"), "", normalizePath(file)),
+    size_MiB = size_bytes / 1024^2,
+    github_status = dplyr::case_when(
+      size_MiB > 100 ~ "BLOCKED: over 100 MiB",
+      size_MiB > 50 ~ "WARNING: over 50 MiB",
+      TRUE ~ "OK"
+    )
+  ) |>
+  dplyr::arrange(dplyr::desc(size_bytes)) |>
+  dplyr::slice_head(n = 10L) |>
+  dplyr::select(file, size_MiB, github_status)
+
+print(top_10_largest_files, n = 10L, width = Inf)
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+The `echo: false` option disables the printing of code (only output is displayed).

@@ -1,0 +1,5 @@
+text_id,model,n_paragraphs,n_adjacent_paragraph_pairs,y4_all_lemma_overlap_mean,y4_content_overlap_mean,noun_transition_sum,pronoun_transition_sum,adverb_transition_sum,potential_nominal_reference_transition_sum,noun_to_potential_pronoun_ratio
+BASIC_CHATGPT_NATIVE_001,chatgpt_native,4,3,0.18613579403053088,0.08824143692564745,11,9,7,3,3.6666666666666665
+BASIC_CLAUDE_NATIVE_001,claude_native,3,2,0.09031339031339031,0.045361247947454844,6,7,0,4,1.5
+BASIC_GEMINI_NATIVE_001,gemini_native,3,2,0.14080158585490338,0.060981912144702846,8,9,3,2,4
+HUMAN_BASELINE_001,human,5,4,0.1361356686605886,0.08264435729349928,13,8,11,0,

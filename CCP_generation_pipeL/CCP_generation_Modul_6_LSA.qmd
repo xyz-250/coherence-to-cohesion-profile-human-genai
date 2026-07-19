@@ -1,0 +1,3112 @@
+---
+title: "CCP_generation_Modul_6_LSA.qmd"
+author: "izb."
+format: html
+editor: visual
+execute:
+  echo: true
+  warning: true
+  message: true
+---
+
+# Modul 6 - 1
+
+```{r}
+# MODUL 6 — LSA Semantic Similarity
+
+#This module builds a fixed 50-dimensional LSA reference space from the L1-Corpus and later projects sentences, paragraphs, titles, and subheadings from the four target texts into that space.
+
+# MODUL 6.1 — Setup
+
+
+required_packages <- c(
+  "dplyr",
+  "tidyr",
+  "purrr",
+  "readr",
+  "stringr",
+  "tibble",
+  "quanteda",
+  "Matrix",
+  "irlba"
+)
+
+missing_packages <- required_packages[
+  !vapply(
+    required_packages,
+    requireNamespace,
+    logical(1),
+    quietly = TRUE
+  )
+]
+
+if (length(missing_packages) > 0) {
+  stop(
+    "Missing packages: ",
+    paste(missing_packages, collapse = ", "),
+    "\nInstall them before continuing."
+  )
+}
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(readr)
+library(stringr)
+library(tibble)
+library(quanteda)
+library(Matrix)
+library(irlba)
+
+options(
+  dplyr.summarise.inform = FALSE,
+  scipen = 999
+)
+
+lsa_dimensions <- 50L
+
+# Primary MODUL 6 input categories:
+# content words plus coordinating and subordinating connectors
+lsa_pos_keep <- c(
+  "NOUN",
+  "PROPN",
+  "VERB",
+  "ADJ",
+  "ADV",
+  "CCONJ",
+  "SCONJ"
+)
+
+message("MODUL 6 setup complete.")
+message("Fixed LSA dimensions: ", lsa_dimensions)
+message(
+  "Included UPOS categories: ",
+  paste(lsa_pos_keep, collapse = ", ")
+)
+```
+
+# Modul 6.2 — Paths and output folders
+
+```{r}
+
+# MODUL 6.2 — Paths and output folders
+
+# This QMD is located inside:
+# CC_Profile_HvsLM/CCP_generation_pipeL/
+
+data_prep_dir <- "../data_prep_CCP_output"
+module_6_output_dir <- "../measure_outputs"
+
+dir.create(
+  module_6_output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+if (!dir.exists(data_prep_dir)) {
+  stop(
+    "Missing frozen input folder: ",
+    data_prep_dir
+  )
+}
+
+message(
+  "Working directory: ",
+  getwd()
+)
+
+message(
+  "Frozen input folder: ",
+  normalizePath(
+    data_prep_dir,
+    mustWork = TRUE
+  )
+)
+
+message(
+  "MODUL 6 output folder: ",
+  normalizePath(
+    module_6_output_dir,
+    mustWork = TRUE
+  )
+)
+```
+
+# Modul 6.4 — Core input paths and validation
+
+```{r}
+# MODUL 6.4 — Core input paths and validation
+
+core_input_paths <- c(
+  current_texts_parsed = file.path(data_prep_dir, "current_texts_parsed.rds"),
+  parsed_S_layer = file.path(data_prep_dir, "parsed_S_layer.rds"),
+  current_paragraph_layer = file.path(data_prep_dir, "current_paragraph_layer.rds"),
+  l1_reference_bundle = file.path(data_prep_dir, "l1_corpus_reference_bundle_corrected.rds")
+)
+
+missing_core_inputs <- names(core_input_paths)[!file.exists(core_input_paths)]
+
+if (length(missing_core_inputs) > 0L) {
+  stop(
+    "Missing required MODUL 6 inputs:\n",
+    paste(core_input_paths[missing_core_inputs], collapse = "\n")
+  )
+}
+
+message("All four core MODUL 6 inputs are available.")
+```
+
+# Modul 6.5 — Load frozen core inputs
+
+```{r}
+# MODUL 6.5 — Load frozen core inputs
+
+current_texts_parsed <- readRDS(
+  core_input_paths[["current_texts_parsed"]]
+)
+
+parsed_S_layer <- readRDS(
+  core_input_paths[["parsed_S_layer"]]
+)
+
+current_paragraph_layer <- readRDS(
+  core_input_paths[["current_paragraph_layer"]]
+)
+
+l1_reference_bundle <- readRDS(
+  core_input_paths[["l1_reference_bundle"]]
+)
+
+l1_documents <- l1_reference_bundle$documents
+l1_sentences <- l1_reference_bundle$sentences
+l1_tokens <- l1_reference_bundle$tokens
+
+stopifnot(
+  isTRUE(
+    l1_reference_bundle$metadata$final_audit_passed
+  )
+)
+
+message("Frozen core inputs loaded.")
+message("Validated corrected L1 reference bundle loaded.")
+```
+
+# Modul 6.7 — Title and subheading source diagnostic
+
+```{r}
+
+# MODUL 6.7 — Load and validate title metadata new
+
+title_source_paths <- c(
+  human_headings = "../metadata/text1_hm_headings.csv",
+  reconstruction_prompt = "../prompts/prompt_master_reconstruction.txt"
+)
+
+missing_title_sources <- names(title_source_paths)[
+  !file.exists(title_source_paths)
+]
+
+if (length(missing_title_sources) > 0) {
+  stop(
+    "Missing title source files: ",
+    paste(missing_title_sources, collapse = ", ")
+  )
+}
+
+human_headings <- readr::read_csv(
+  title_source_paths[["human_headings"]],
+  show_col_types = FALSE
+)
+
+prompt_master_reconstruction <- readr::read_file(
+  title_source_paths[["reconstruction_prompt"]]
+)
+
+required_heading_columns <- c(
+  "text_id",
+  "heading_id",
+  "heading_type",
+  "heading_text"
+)
+
+missing_heading_columns <- setdiff(
+  required_heading_columns,
+  names(human_headings)
+)
+
+if (length(missing_heading_columns) > 0) {
+  stop(
+    "The human heading file is missing required columns: ",
+    paste(missing_heading_columns, collapse = ", ")
+  )
+}
+
+human_headings_clean <- human_headings |>
+  mutate(
+    heading_type = stringr::str_to_lower(
+      stringr::str_squish(as.character(heading_type))
+    ),
+    heading_text = stringr::str_squish(
+      as.character(heading_text)
+    )
+  ) |>
+  filter(
+    !is.na(heading_text),
+    heading_text != ""
+  )
+
+main_titles <- human_headings_clean |>
+  filter(heading_type == "main_title") |>
+  distinct(heading_text) |>
+  pull(heading_text)
+
+if (length(main_titles) != 1) {
+  stop(
+    "Expected exactly one main title, but found: ",
+    length(main_titles)
+  )
+}
+
+common_main_title <- main_titles[[1]]
+
+title_in_prompt <- stringr::str_detect(
+  prompt_master_reconstruction,
+  stringr::fixed(
+    common_main_title,
+    ignore_case = TRUE
+  )
+)
+
+if (!title_in_prompt) {
+  stop(
+    "The validated main title was not found in the shared ",
+    "reconstruction prompt."
+  )
+}
+
+human_section_titles <- human_headings_clean |>
+  filter(heading_type == "section_title") |>
+  select(
+    text_id,
+    heading_id,
+    heading_text
+  )
+
+message("Validated common main title: ", common_main_title)
+message("Main title confirmed in the shared reconstruction prompt.")
+
+message("Human section titles:")
+print(
+  human_section_titles,
+  n = Inf,
+  width = Inf
+)
+```
+
+# Modul 6.8 — Basic target-layer integrity preview
+
+```{r}
+
+# MODUL 6.8 — Basic target-layer integrity preview
+
+required_token_columns <- c(
+  "text_id",
+  "sentence_id",
+  "lemma",
+  "pos"
+)
+
+missing_token_columns <- setdiff(
+  required_token_columns,
+  names(current_texts_parsed)
+)
+
+if (length(missing_token_columns) > 0) {
+  stop(
+    "current_texts_parsed is missing required columns: ",
+    paste(missing_token_columns, collapse = ", ")
+  )
+}
+
+target_token_preview <- current_texts_parsed |>
+  mutate(
+    lemma_clean = str_to_lower(
+      str_squish(as.character(lemma))
+    ),
+    pos = str_to_upper(as.character(pos)),
+    included_in_lsa = (
+      pos %in% lsa_pos_keep &
+      !is.na(lemma_clean) &
+      lemma_clean != ""
+    ),
+    lsa_token_class = case_when(
+  pos %in% c("NOUN", "PROPN", "VERB", "ADJ", "ADV") ~ "content",
+  pos %in% c("CCONJ", "SCONJ") ~ "connector",
+  TRUE ~ "excluded"
+    )
+  )
+
+target_token_preview |>
+  count(
+    text_id,
+    lsa_token_class,
+    name = "n_tokens"
+  ) |>
+  arrange(text_id, lsa_token_class) |>
+  print(n = Inf, width = Inf)
+
+message("Initial MODUL 6 input inspection complete.")
+
+```
+
+# Modul 6.11 — Build and validate the shared prompt-heading grid
+
+```{r}
+
+# MODUL 6.11 — Build and validate the shared prompt-heading grid
+
+# 1. Validate the required preceding objects
+
+required_heading_objects <- c(
+  "common_main_title",
+  "human_section_titles",
+  "prompt_master_reconstruction"
+)
+
+missing_heading_objects <- required_heading_objects[
+  !vapply(
+    required_heading_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_heading_objects) > 0L) {
+  stop(
+    "Missing required heading objects: ",
+    paste(missing_heading_objects, collapse = ", "),
+    ". Run the preceding MODUL 6 cells first."
+  )
+}
+
+# 2. Order and validate the three prescribed subheadings
+
+ordered_section_titles <- human_section_titles |>
+  mutate(
+    source_heading_number = readr::parse_number(
+      as.character(heading_id)
+    )
+  ) |>
+  arrange(
+    source_heading_number,
+    heading_id
+  ) |>
+  distinct(
+    heading_text,
+    .keep_all = TRUE
+  )
+
+if (nrow(ordered_section_titles) != 3L) {
+  stop(
+    "Expected exactly three distinct prescribed subheadings, ",
+    "but found: ",
+    nrow(ordered_section_titles)
+  )
+}
+
+if (any(is.na(ordered_section_titles$source_heading_number))) {
+  stop(
+    "At least one source heading ID has no usable numeric order."
+  )
+}
+
+# 3. Build the fixed shared heading grid
+
+shared_prompt_headings <- tibble::tibble(
+  heading_order = 0:3,
+  heading_id = c(
+    "main_title",
+    "subheading_1",
+    "subheading_2",
+    "subheading_3"
+  ),
+  heading_type = c(
+    "main_title",
+    rep("section_title", 3)
+  ),
+  heading_text = c(
+    common_main_title,
+    ordered_section_titles$heading_text
+  )
+)
+
+# 4. Confirm that every heading occurs exactly once in the prompt
+
+shared_prompt_headings <- shared_prompt_headings |>
+  mutate(
+    prompt_locations = purrr::map(
+      heading_text,
+      function(current_heading) {
+        stringr::str_locate_all(
+          prompt_master_reconstruction,
+          stringr::fixed(
+            current_heading,
+            ignore_case = TRUE
+          )
+        )[[1]]
+      }
+    ),
+    n_prompt_matches = purrr::map_int(
+      prompt_locations,
+      nrow
+    ),
+    prompt_start = purrr::map_int(
+      prompt_locations,
+      function(current_locations) {
+        if (nrow(current_locations) == 1L) {
+          return(
+            as.integer(
+              current_locations[1, "start"]
+            )
+          )
+        }
+
+        NA_integer_
+      }
+    )
+  )
+
+if (any(shared_prompt_headings$n_prompt_matches != 1L)) {
+  invalid_prompt_headings <- shared_prompt_headings |>
+    filter(
+      n_prompt_matches != 1L
+    )
+
+  stop(
+    "Each prescribed heading must occur exactly once in the ",
+    "shared reconstruction prompt. Problematic headings: ",
+    paste(
+      invalid_prompt_headings$heading_text,
+      collapse = " | "
+    )
+  )
+}
+
+# 5. Validate the prescribed heading order
+
+heading_order_correct <- all(
+  diff(shared_prompt_headings$prompt_start) > 0L
+)
+
+if (!heading_order_correct) {
+  stop(
+    "The main title and three prescribed subheadings do not ",
+    "occur in the expected order in the reconstruction prompt."
+  )
+}
+
+shared_prompt_headings <- shared_prompt_headings |>
+  select(
+    heading_order,
+    heading_id,
+    heading_type,
+    heading_text,
+    n_prompt_matches,
+    prompt_start
+  )
+
+# 6. Display the validated shared heading grid
+
+message(
+  "Validated one shared main title and three prescribed ",
+  "subheadings in the correct prompt order."
+)
+
+print(
+  shared_prompt_headings,
+  n = Inf,
+  width = Inf
+)
+```
+
+# Modul 6.12 — Prepare structural mapping inputs
+
+```{r}
+
+# MODUL 6.12 — Prepare heading and target-text inputs for structural mapping
+
+# 1. Validate required upstream objects
+
+required_objects <- c(
+  "current_paragraph_layer",
+  "shared_prompt_headings"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", "),
+    ". Run the preceding MODUL 6 cells first."
+  )
+}
+
+required_paragraph_columns <- c(
+  "text_id",
+  "model",
+  "paragraph_id",
+  "paragraph_number",
+  "paragraph_text"
+)
+
+missing_paragraph_columns <- setdiff(
+  required_paragraph_columns,
+  names(current_paragraph_layer)
+)
+
+if (length(missing_paragraph_columns) > 0L) {
+  stop(
+    "current_paragraph_layer is missing required columns: ",
+    paste(missing_paragraph_columns, collapse = ", ")
+  )
+}
+
+# 2. Prepare the three prescribed subheadings
+
+prescribed_subheadings <- shared_prompt_headings |>
+  filter(
+    heading_id %in% paste0(
+      "subheading_",
+      1:3
+    )
+  ) |>
+  transmute(
+    section_id = as.integer(
+      readr::parse_number(heading_id)
+    ),
+    subheading_id = heading_id,
+    subheading_text = heading_text
+  ) |>
+  arrange(section_id)
+
+if (
+  nrow(prescribed_subheadings) != 3L ||
+  !identical(
+    prescribed_subheadings$section_id,
+    1:3
+  )
+) {
+  stop(
+    "The shared heading grid must contain exactly ",
+    "subheading_1, subheading_2, and subheading_3."
+  )
+}
+
+# 3. Register and validate the four original target texts
+
+target_text_sources <- tibble::tribble(
+  ~text_id,                    ~file_path,
+  "HUMAN_BASELINE_001", "../texte_input/text1_hm_annotated.txt",
+  "BASIC_CHATGPT_NATIVE_001",  "../outputs_basic/BASIC_CHATGPT_NATIVE_001.txt",
+  "BASIC_CLAUDE_NATIVE_001",   "../outputs_basic/BASIC_CLAUDE_NATIVE_001.txt",
+  "BASIC_GEMINI_NATIVE_001",   "../outputs_basic/BASIC_GEMINI_NATIVE_001.txt"
+)
+
+if (
+  !setequal(
+    current_paragraph_layer$text_id,
+    target_text_sources$text_id
+  )
+) {
+  stop(
+    "The paragraph-layer text IDs do not match ",
+    "the four registered target texts."
+  )
+}
+
+missing_target_files <- target_text_sources$file_path[
+  !file.exists(target_text_sources$file_path)
+]
+
+if (length(missing_target_files) > 0L) {
+  stop(
+    "Missing original target-text files: ",
+    paste(missing_target_files, collapse = ", ")
+  )
+}
+
+# 4. Define structural normalization and location helpers
+
+normalize_structure_text <- function(text_vector) {
+  text_vector |>
+    as.character() |>
+    stringr::str_replace_all(
+      "[\u2010\u2011\u2012\u2013\u2014\u2212]",
+      "-"
+    ) |>
+    stringr::str_to_lower() |>
+    stringr::str_replace_all(
+      "[^\\p{L}\\p{N}]+",
+      " "
+    ) |>
+    stringr::str_squish()
+}
+
+locate_once <- function(text, pattern) {
+  locations <- stringr::str_locate_all(
+    text,
+    stringr::fixed(pattern)
+  )[[1]]
+
+  n_matches <- nrow(locations)
+
+  tibble::tibble(
+    n_matches = as.integer(n_matches),
+    match_start = if (n_matches == 1L) {
+      as.integer(locations[1, "start"])
+    } else {
+      NA_integer_
+    },
+    match_end = if (n_matches == 1L) {
+      as.integer(locations[1, "end"])
+    } else {
+      NA_integer_
+    }
+  )
+}
+
+# 5. Load and normalize the structural reference texts
+
+target_text_sources <- target_text_sources |>
+  mutate(
+    raw_text = purrr::map_chr(
+      file_path,
+      readr::read_file
+    ),
+    raw_text_normalized =
+      normalize_structure_text(raw_text)
+  )
+
+prescribed_subheadings <- prescribed_subheadings |>
+  mutate(
+    subheading_normalized =
+      normalize_structure_text(
+        subheading_text
+      )
+  )
+
+# 6. Display the prepared structural inputs
+
+message(
+  "Structural mapping inputs prepared for four texts ",
+  "and three prescribed subheadings."
+)
+
+print(
+  target_text_sources |>
+    transmute(
+      text_id,
+      file_path,
+      file_exists = file.exists(file_path),
+      normalized_character_count =
+        stringr::str_length(
+          raw_text_normalized
+        )
+    ),
+  n = Inf,
+  width = Inf
+)
+
+print(
+  prescribed_subheadings,
+  n = Inf,
+  width = Inf
+)
+```
+
+# Modul 6.13 — Locate and audit prescribed subheadings
+
+```{r}
+
+# MODUL 6.13 — Locate the three prescribed subheadings in each target text
+
+# 1. Locate each normalized subheading in each normalized target text
+
+heading_locations <- tidyr::crossing(
+  target_text_sources |>
+    select(
+      text_id,
+      raw_text_normalized
+    ),
+  prescribed_subheadings
+) |>
+  mutate(
+    location_result = purrr::map2(
+      raw_text_normalized,
+      subheading_normalized,
+      locate_once
+    )
+  ) |>
+  tidyr::unnest(location_result) |>
+  rename(
+    n_heading_matches = n_matches,
+    heading_start = match_start,
+    heading_end = match_end
+  ) |>
+  group_by(text_id) |>
+  arrange(
+    section_id,
+    .by_group = TRUE
+  ) |>
+  mutate(
+    next_heading_start = lead(
+      heading_start
+    )
+  ) |>
+  ungroup()
+
+# 2. Build the heading-level structural audit
+
+heading_audit <- heading_locations |>
+  group_by(text_id) |>
+  summarise(
+    n_detected_sections = sum(
+      n_heading_matches == 1L
+    ),
+    n_missing_sections = sum(
+      n_heading_matches == 0L
+    ),
+    n_duplicated_sections = sum(
+      n_heading_matches > 1L
+    ),
+    all_sections_present = all(
+      n_heading_matches == 1L
+    ),
+    .groups = "drop"
+  ) |>
+  left_join(
+    heading_locations |>
+      group_by(text_id) |>
+      summarise(
+        section_order_correct = if (
+          all(n_heading_matches == 1L)
+        ) {
+          all(diff(heading_start) > 0L)
+        } else {
+          FALSE
+        },
+        .groups = "drop"
+      ),
+    by = "text_id"
+  )
+
+# 3. Display the heading locations and audit
+
+message("Detected prescribed subheadings:")
+
+print(
+  heading_locations |>
+    select(
+      text_id,
+      section_id,
+      subheading_id,
+      n_heading_matches,
+      heading_start,
+      heading_end,
+      next_heading_start
+    ),
+  n = Inf,
+  width = Inf
+)
+
+message("Heading audit:")
+
+print(
+  heading_audit,
+  n = Inf,
+  width = Inf
+)
+
+# 4. Warn without silently repairing structural anomalies
+
+if (
+  any(
+    !heading_audit$all_sections_present |
+      !heading_audit$section_order_correct
+  )
+) {
+  warning(
+    "At least one target text has a missing, duplicated, ",
+    "or misordered prescribed subheading."
+  )
+} else {
+  message(
+    "All four texts contain the three prescribed ",
+    "subheadings exactly once and in the correct order."
+  )
+}
+```
+
+# Modul 6.14 — Locate and audit body paragraphs
+
+```{r}
+
+# MODUL 6.14 — Locate each frozen body paragraph in its original target text
+
+# 1. Validate the required upstream objects
+
+required_objects <- c(
+  "current_paragraph_layer",
+  "target_text_sources",
+  "normalize_structure_text",
+  "locate_once"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", "),
+    ". Run MODUL 6.12 and MODUL 6.13 first."
+  )
+}
+
+# 2. Locate every normalized paragraph in its original text
+
+paragraph_locations <- current_paragraph_layer |>
+  left_join(
+    target_text_sources |>
+      select(
+        text_id,
+        raw_text_normalized
+      ),
+    by = "text_id"
+  ) |>
+  mutate(
+    paragraph_text_normalized =
+      normalize_structure_text(
+        paragraph_text
+      ),
+    location_result = purrr::map2(
+      raw_text_normalized,
+      paragraph_text_normalized,
+      locate_once
+    )
+  ) |>
+  tidyr::unnest(location_result) |>
+  rename(
+    n_paragraph_matches = n_matches,
+    paragraph_start = match_start,
+    paragraph_end = match_end
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number
+  )
+
+# 3. Build the paragraph-location audit
+
+paragraph_location_audit <- paragraph_locations |>
+  group_by(text_id) |>
+  summarise(
+    n_paragraphs = dplyr::n(),
+    n_located_once = sum(
+      n_paragraph_matches == 1L
+    ),
+    n_missing_paragraphs = sum(
+      n_paragraph_matches == 0L
+    ),
+    n_duplicated_paragraph_matches = sum(
+      n_paragraph_matches > 1L
+    ),
+    all_paragraphs_located_once = all(
+      n_paragraph_matches == 1L
+    ),
+    .groups = "drop"
+  ) |>
+  arrange(text_id)
+
+# 4. Display and validate the paragraph locations
+
+message("Paragraph locations:")
+
+print(
+  paragraph_locations |>
+    select(
+      text_id,
+      paragraph_id,
+      paragraph_number,
+      n_paragraph_matches,
+      paragraph_start,
+      paragraph_end
+    ),
+  n = Inf,
+  width = Inf
+)
+
+message("Paragraph-location audit:")
+
+print(
+  paragraph_location_audit,
+  n = Inf,
+  width = Inf
+)
+
+if (
+  any(
+    !paragraph_location_audit$
+      all_paragraphs_located_once
+  )
+) {
+  warning(
+    "At least one frozen paragraph was missing or matched ",
+    "more than once in its original target text."
+  )
+} else {
+  message(
+    "All 15 frozen body paragraphs were located exactly once."
+  )
+}
+```
+
+# Modul 6.15 — Assign paragraphs to prescribed sections
+
+```{r}
+# MODUL 6.15 — Assign each body paragraph to its governing subheading
+
+# 1. Create paragraph-to-section candidates
+
+paragraph_section_candidates <- paragraph_locations |>
+  select(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    paragraph_text,
+    n_paragraph_matches,
+    paragraph_start,
+    paragraph_end
+  ) |>
+  left_join(
+    heading_locations |>
+      select(
+        text_id,
+        section_id,
+        subheading_id,
+        subheading_text,
+        n_heading_matches,
+        heading_end,
+        next_heading_start
+      ),
+    by = "text_id",
+    relationship = "many-to-many"
+  ) |>
+  mutate(
+    paragraph_in_section = (
+      n_paragraph_matches == 1L &
+      n_heading_matches == 1L &
+      paragraph_start > heading_end &
+      (
+        is.na(next_heading_start) |
+        paragraph_start < next_heading_start
+      )
+    )
+  )
+
+# 2. Retain exactly one governing section per paragraph
+
+paragraph_section_map <- paragraph_section_candidates |>
+  group_by(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    paragraph_text,
+    n_paragraph_matches,
+    paragraph_start,
+    paragraph_end
+  ) |>
+  summarise(
+    n_section_matches = sum(
+      paragraph_in_section,
+      na.rm = TRUE
+    ),
+    section_id = if (
+      n_section_matches == 1L
+    ) {
+      section_id[
+        which(paragraph_in_section)[1]
+      ]
+    } else {
+      NA_integer_
+    },
+    .groups = "drop"
+  ) |>
+  mutate(
+    mapping_status = case_when(
+      n_paragraph_matches != 1L ~
+        "invalid_paragraph_location",
+      n_section_matches == 1L ~
+        "mapped",
+      n_section_matches == 0L ~
+        "outside_section_boundaries",
+      n_section_matches > 1L ~
+        "ambiguous_section_match",
+      TRUE ~
+        "unresolved"
+    )
+  ) |>
+  left_join(
+    prescribed_subheadings |>
+      select(
+        section_id,
+        subheading_id,
+        subheading_text
+      ),
+    by = "section_id"
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number
+  )
+
+# 3. Display the paragraph-to-section mapping
+
+print(
+  paragraph_section_map |>
+    select(
+      text_id,
+      paragraph_id,
+      paragraph_number,
+      section_id,
+      subheading_id,
+      mapping_status
+    ),
+  n = Inf,
+  width = Inf
+)
+
+# 4. Validate the mapping result
+
+if (
+  any(
+    paragraph_section_map$mapping_status != "mapped"
+  )
+) {
+  warning(
+    "At least one paragraph could not be assigned ",
+    "unambiguously to a prescribed section."
+  )
+} else {
+  message(
+    "All 15 body paragraphs were assigned to exactly ",
+    "one heading-defined section."
+  )
+}
+```
+
+# Modul 6.16 — Structural audit
+
+```{r}
+# MODUL 6.16 — Build and validate the final structural audit
+
+# 1. Apply the updated subheading-object name
+
+if (
+  !exists("introduced_subheadings", inherits = TRUE) &&
+  exists("prescribed_subheadings", inherits = TRUE)
+) {
+  introduced_subheadings <- prescribed_subheadings
+}
+
+required_objects <- c(
+  "introduced_subheadings",
+  "heading_audit",
+  "paragraph_section_map",
+  "target_text_sources"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+# 2. Count mapped paragraphs in each introduced section
+
+section_counts <- tidyr::crossing(
+  text_id = target_text_sources$text_id,
+  section_id = introduced_subheadings$section_id
+) |>
+  left_join(
+    paragraph_section_map |>
+      filter(mapping_status == "mapped") |>
+      count(
+        text_id,
+        section_id,
+        name = "n_paragraphs"
+      ),
+    by = c(
+      "text_id",
+      "section_id"
+    )
+  ) |>
+  mutate(
+    n_paragraphs = tidyr::replace_na(
+      n_paragraphs,
+      0L
+    ),
+    count_name = paste0(
+      "n_paragraphs_section_",
+      section_id
+    )
+  ) |>
+  select(
+    text_id,
+    count_name,
+    n_paragraphs
+  ) |>
+  tidyr::pivot_wider(
+    names_from = count_name,
+    values_from = n_paragraphs
+  )
+
+# 3. Audit paragraph mapping outcomes
+
+paragraph_mapping_audit <- paragraph_section_map |>
+  group_by(text_id) |>
+  summarise(
+    n_paragraphs_total = dplyr::n(),
+    n_mapped_paragraphs = sum(
+      mapping_status == "mapped"
+    ),
+    n_unmapped_paragraphs = sum(
+      mapping_status != "mapped"
+    ),
+    n_ambiguous_paragraphs = sum(
+      stringr::str_detect(
+        mapping_status,
+        "ambiguous"
+      )
+    ),
+    n_outside_section_paragraphs = sum(
+      mapping_status ==
+        "outside_section_boundaries"
+    ),
+    .groups = "drop"
+  )
+
+# 4. Assemble the final structural audit
+
+structural_audit <- target_text_sources |>
+  select(text_id) |>
+  left_join(
+    heading_audit,
+    by = "text_id"
+  ) |>
+  left_join(
+    section_counts,
+    by = "text_id"
+  ) |>
+  left_join(
+    paragraph_mapping_audit,
+    by = "text_id"
+  ) |>
+  mutate(
+    n_prescribed_sections =
+      nrow(introduced_subheadings),
+
+    n_empty_sections =
+      as.integer(
+        n_paragraphs_section_1 == 0L
+      ) +
+      as.integer(
+        n_paragraphs_section_2 == 0L
+      ) +
+      as.integer(
+        n_paragraphs_section_3 == 0L
+      ),
+
+    section_mapping_valid = (
+      n_prescribed_sections == 3L &
+      n_detected_sections == 3L &
+      all_sections_present &
+      section_order_correct &
+      n_missing_sections == 0L &
+      n_duplicated_sections == 0L &
+      n_empty_sections == 0L &
+      n_mapped_paragraphs ==
+        n_paragraphs_total &
+      n_unmapped_paragraphs == 0L &
+      n_ambiguous_paragraphs == 0L &
+      n_outside_section_paragraphs == 0L
+    )
+  ) |>
+  select(
+    text_id,
+    n_prescribed_sections,
+    n_detected_sections,
+    all_sections_present,
+    section_order_correct,
+    n_paragraphs_section_1,
+    n_paragraphs_section_2,
+    n_paragraphs_section_3,
+    n_empty_sections,
+    n_paragraphs_total,
+    n_mapped_paragraphs,
+    n_unmapped_paragraphs,
+    n_ambiguous_paragraphs,
+    n_outside_section_paragraphs,
+    n_missing_sections,
+    n_duplicated_sections,
+    section_mapping_valid
+  ) |>
+  arrange(text_id)
+
+# 5. Display and validate the audit
+
+print(
+  structural_audit,
+  n = Inf,
+  width = Inf
+)
+
+if (any(!structural_audit$section_mapping_valid)) {
+  warning(
+    "At least one target text has an invalid structural mapping. ",
+    "Its later paragraph-to-subheading index must be NA."
+  )
+} else {
+  message(
+    "Structural audit passed: all four texts contain three ",
+    "ordered, non-empty sections and all 15 paragraphs are ",
+    "mapped unambiguously."
+  )
+}
+```
+
+# Modul 6.17 — Reconstruct sentence-to-paragraph mapping
+
+```{r}
+# MODUL 6.17 — Separate heading rows and map body sentences to validated paragraphs
+
+# 1. Validate required inputs
+
+required_objects <- c(
+  "parsed_S_layer",
+  "paragraph_section_map",
+  "shared_prompt_headings",
+  "normalize_structure_text"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+required_sentence_columns <- c(
+  "text_id",
+  "sentence_id",
+  "sentence_number",
+  "sentence_text"
+)
+
+missing_sentence_columns <- setdiff(
+  required_sentence_columns,
+  names(parsed_S_layer)
+)
+
+if (length(missing_sentence_columns) > 0L) {
+  stop(
+    "parsed_S_layer is missing required columns: ",
+    paste(missing_sentence_columns, collapse = ", ")
+  )
+}
+
+# 2. Prepare normalized shared heading material
+
+normalized_shared_headings <- shared_prompt_headings |>
+  arrange(heading_order) |>
+  mutate(
+    heading_text_normalized =
+      normalize_structure_text(heading_text)
+  ) |>
+  pull(heading_text_normalized)
+
+strip_shared_heading_material <- function(
+  normalized_sentence,
+  normalized_headings
+) {
+  cleaned_sentence <- normalized_sentence
+
+  for (current_heading in normalized_headings) {
+    cleaned_sentence <- stringr::str_replace_all(
+      cleaned_sentence,
+      stringr::fixed(current_heading),
+      " "
+    )
+  }
+
+  stringr::str_squish(cleaned_sentence)
+}
+
+# 3. Separate heading material from body-sentence text
+
+sentence_mapping_base <- parsed_S_layer |>
+  transmute(
+    text_id,
+    sentence_id,
+    sentence_number,
+    sentence_text,
+
+    sentence_text_normalized =
+      normalize_structure_text(sentence_text),
+
+    sentence_body_normalized =
+      purrr::map_chr(
+        sentence_text_normalized,
+        strip_shared_heading_material,
+        normalized_headings =
+          normalized_shared_headings
+      )
+  ) |>
+  mutate(
+    contains_heading_material = (
+      sentence_text_normalized !=
+        sentence_body_normalized
+    ),
+
+    heading_only = (
+      sentence_body_normalized == ""
+    )
+  )
+
+# 4. Prepare the validated paragraph reference
+
+paragraph_mapping_reference <- paragraph_section_map |>
+  filter(
+    mapping_status == "mapped"
+  ) |>
+  transmute(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    section_id,
+    subheading_id,
+    subheading_text,
+
+    paragraph_text_normalized =
+      normalize_structure_text(paragraph_text)
+  )
+
+# 5. Compare each non-empty body sentence with paragraphs from its text
+
+sentence_paragraph_candidates <- sentence_mapping_base |>
+  left_join(
+    paragraph_mapping_reference,
+    by = "text_id",
+    relationship = "many-to-many"
+  ) |>
+  mutate(
+    sentence_found_in_paragraph = purrr::map2_lgl(
+      paragraph_text_normalized,
+      sentence_body_normalized,
+      function(
+        current_paragraph,
+        current_sentence
+      ) {
+        if (
+          is.na(current_paragraph) ||
+          is.na(current_sentence) ||
+          current_sentence == ""
+        ) {
+          return(FALSE)
+        }
+
+        stringr::str_detect(
+          current_paragraph,
+          stringr::fixed(current_sentence)
+        )
+      }
+    )
+  )
+
+# 6. Retain one mapping result per parsed sentence
+
+sentence_paragraph_map <- sentence_paragraph_candidates |>
+  group_by(
+    text_id,
+    sentence_id,
+    sentence_number,
+    sentence_text,
+    sentence_text_normalized,
+    sentence_body_normalized,
+    contains_heading_material,
+    heading_only
+  ) |>
+  summarise(
+    n_paragraph_matches = sum(
+      sentence_found_in_paragraph,
+      na.rm = TRUE
+    ),
+
+    paragraph_number = if (
+      n_paragraph_matches == 1L
+    ) {
+      paragraph_number[
+        sentence_found_in_paragraph
+      ][[1]]
+    } else {
+      NA_integer_
+    },
+
+    .groups = "drop"
+  ) |>
+  mutate(
+    mapping_status = case_when(
+      heading_only ~
+        "heading_only",
+
+      n_paragraph_matches == 1L ~
+        "mapped",
+
+      n_paragraph_matches == 0L ~
+        "unmapped_body_sentence",
+
+      n_paragraph_matches > 1L ~
+        "ambiguous_body_sentence",
+
+      TRUE ~
+        "unresolved"
+    )
+  ) |>
+  left_join(
+    paragraph_mapping_reference |>
+      select(
+        text_id,
+        model,
+        paragraph_id,
+        paragraph_number,
+        section_id,
+        subheading_id,
+        subheading_text
+      ),
+    by = c(
+      "text_id",
+      "paragraph_number"
+    ),
+    relationship = "many-to-one"
+  ) |>
+  arrange(
+    text_id,
+    sentence_number
+  )
+```
+
+# MODUL 6.18 — Resolve structural markers and high-confidence sentence mappings
+
+```{r}
+
+# 1. Validate required upstream objects
+
+required_objects <- c(
+  "sentence_paragraph_map",
+  "paragraph_mapping_reference"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+# 2. Identify numeric structural markers left after heading removal
+
+structural_marker_keys <- sentence_paragraph_map |>
+  filter(
+    mapping_status == "unmapped_body_sentence",
+    stringr::str_detect(
+      sentence_body_normalized,
+      "^\\d+$"
+    )
+  ) |>
+  distinct(
+    text_id,
+    sentence_id
+  ) |>
+  mutate(
+    structural_marker = TRUE
+  )
+
+# 3. Define a helper for controlled term-overlap matching
+
+split_unique_terms <- function(text_value) {
+  text_value <- stringr::str_squish(
+    as.character(text_value)
+  )
+
+  if (
+    is.na(text_value) ||
+    text_value == ""
+  ) {
+    return(character())
+  }
+
+  unique(
+    stringr::str_split(
+      text_value,
+      "\\s+"
+    )[[1]]
+  )
+}
+
+# 4. Score the remaining unmapped body sentences against paragraphs
+
+fallback_candidate_scores <- sentence_paragraph_map |>
+  filter(
+    mapping_status == "unmapped_body_sentence"
+  ) |>
+  anti_join(
+    structural_marker_keys,
+    by = c(
+      "text_id",
+      "sentence_id"
+    )
+  ) |>
+  select(
+    text_id,
+    sentence_id,
+    sentence_number,
+    sentence_body_normalized
+  ) |>
+  left_join(
+    paragraph_mapping_reference |>
+      select(
+        text_id,
+        paragraph_id,
+        paragraph_number,
+        section_id,
+        subheading_id,
+        paragraph_text_normalized
+      ),
+    by = "text_id",
+    relationship = "many-to-many"
+  ) |>
+  mutate(
+    sentence_terms = purrr::map(
+      sentence_body_normalized,
+      split_unique_terms
+    ),
+
+    paragraph_terms = purrr::map(
+      paragraph_text_normalized,
+      split_unique_terms
+    ),
+
+    n_sentence_terms = purrr::map_int(
+      sentence_terms,
+      length
+    ),
+
+    n_shared_terms = purrr::map2_int(
+      sentence_terms,
+      paragraph_terms,
+      function(
+        current_sentence_terms,
+        current_paragraph_terms
+      ) {
+        length(
+          intersect(
+            current_sentence_terms,
+            current_paragraph_terms
+          )
+        )
+      }
+    ),
+
+    sentence_term_coverage = if_else(
+      n_sentence_terms > 0L,
+      n_shared_terms / n_sentence_terms,
+      NA_real_
+    )
+  ) |>
+  group_by(
+    text_id,
+    sentence_id
+  ) |>
+  arrange(
+    desc(sentence_term_coverage),
+    paragraph_number,
+    .by_group = TRUE
+  ) |>
+  mutate(
+    candidate_rank = dplyr::row_number(),
+
+    best_coverage = dplyr::first(
+      sentence_term_coverage
+    ),
+
+    second_best_coverage = dplyr::nth(
+      sentence_term_coverage,
+      2L,
+      default = 0
+    ),
+
+    coverage_margin = (
+      best_coverage -
+      second_best_coverage
+    )
+  ) |>
+  ungroup()
+
+# 5. Accept only clear high-confidence fallback assignments
+
+fallback_assignments <- fallback_candidate_scores |>
+  filter(
+    candidate_rank == 1L,
+    best_coverage >= 0.70,
+    coverage_margin >= 0.20
+  ) |>
+  transmute(
+    text_id,
+    sentence_id,
+
+    fallback_paragraph_number =
+      paragraph_number,
+
+    fallback_coverage =
+      best_coverage,
+
+    fallback_margin =
+      coverage_margin
+  )
+
+# 6. Apply structural-marker and fallback classifications
+
+sentence_paragraph_map <- sentence_paragraph_map |>
+  select(
+    -any_of(
+      c(
+        "model",
+        "paragraph_id",
+        "section_id",
+        "subheading_id",
+        "subheading_text"
+      )
+    )
+  ) |>
+  left_join(
+    structural_marker_keys,
+    by = c(
+      "text_id",
+      "sentence_id"
+    )
+  ) |>
+  left_join(
+    fallback_assignments,
+    by = c(
+      "text_id",
+      "sentence_id"
+    )
+  ) |>
+  mutate(
+    structural_marker = tidyr::replace_na(
+      structural_marker,
+      FALSE
+    ),
+
+    paragraph_number = dplyr::coalesce(
+      fallback_paragraph_number,
+      paragraph_number
+    ),
+
+    mapping_status = case_when(
+      structural_marker ~
+        "structural_marker",
+
+      !is.na(fallback_paragraph_number) ~
+        "mapped_by_high_overlap",
+
+      TRUE ~
+        mapping_status
+    )
+  ) |>
+  select(
+    -fallback_paragraph_number
+  ) |>
+  left_join(
+    paragraph_mapping_reference |>
+      select(
+        text_id,
+        model,
+        paragraph_id,
+        paragraph_number,
+        section_id,
+        subheading_id,
+        subheading_text
+      ),
+    by = c(
+      "text_id",
+      "paragraph_number"
+    ),
+    relationship = "many-to-one"
+  ) |>
+  arrange(
+    text_id,
+    sentence_number
+  )
+
+# 7. Create the finalized body-sentence map
+
+body_sentence_map <- sentence_paragraph_map |>
+  filter(
+    mapping_status %in% c(
+      "mapped",
+      "mapped_by_high_overlap"
+    )
+  )
+
+# 8. Build the finalized mapping audit
+
+sentence_mapping_audit <- sentence_paragraph_map |>
+  group_by(text_id) |>
+  summarise(
+    n_parsed_sentence_rows = dplyr::n(),
+
+    n_heading_only_rows = sum(
+      mapping_status == "heading_only"
+    ),
+
+    n_structural_marker_rows = sum(
+      mapping_status == "structural_marker"
+    ),
+
+    n_exact_mapped_body_sentences = sum(
+      mapping_status == "mapped"
+    ),
+
+    n_overlap_mapped_body_sentences = sum(
+      mapping_status ==
+        "mapped_by_high_overlap"
+    ),
+
+    n_unmapped_body_sentences = sum(
+      mapping_status ==
+        "unmapped_body_sentence"
+    ),
+
+    n_ambiguous_body_sentences = sum(
+      mapping_status ==
+        "ambiguous_body_sentence"
+    ),
+
+    all_body_sentences_mapped_once = (
+      n_unmapped_body_sentences == 0L &
+      n_ambiguous_body_sentences == 0L
+    ),
+
+    .groups = "drop"
+  ) |>
+  arrange(text_id)
+
+# 9. Display and validate the finalized mapping
+
+message("Accepted high-confidence fallback assignments:")
+
+print(
+  fallback_assignments,
+  n = Inf,
+  width = Inf
+)
+
+message("Final sentence-mapping audit:")
+
+print(
+  sentence_mapping_audit,
+  n = Inf,
+  width = Inf
+)
+
+if (
+  any(
+    !sentence_mapping_audit$
+      all_body_sentences_mapped_once
+  )
+) {
+  stop(
+    "Residual sentence mapping remains incomplete. ",
+    "The segment tables must not yet be frozen."
+  )
+} else {
+  message(
+    "Sentence mapping finalized: all body sentences are ",
+    "assigned once, while heading-only and structural-marker ",
+    "rows remain excluded."
+  )
+}
+```
+
+# Modul 6.19 — Build validated body-token layer
+
+```{r}
+
+# MODUL 6.19 — Build the validated heading-free body-token layer
+
+# 1. Validate required inputs
+
+required_objects <- c(
+  "current_texts_parsed",
+  "body_sentence_map",
+  "sentence_mapping_audit",
+  "structural_audit",
+  "lsa_pos_keep",
+  "normalize_structure_text"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+if (
+  !all(structural_audit$section_mapping_valid) ||
+  !all(
+    sentence_mapping_audit$
+      all_body_sentences_mapped_once
+  )
+) {
+  stop(
+    "The finalized structural mapping is incomplete."
+  )
+}
+
+# 2. Prepare the finalized sentence-to-structure bridge
+
+sentence_structure_bridge <- body_sentence_map |>
+  transmute(
+    text_id,
+    sentence_id,
+    sentence_number,
+    sentence_mapping_status = mapping_status,
+    sentence_body_normalized,
+    contains_heading_material,
+    model,
+    paragraph_id,
+    paragraph_number,
+    section_id,
+    subheading_id,
+    subheading_text
+  )
+
+duplicate_sentence_keys <- sentence_structure_bridge |>
+  count(
+    text_id,
+    sentence_id
+  ) |>
+  filter(n > 1L)
+
+if (nrow(duplicate_sentence_keys) > 0L) {
+  stop(
+    "Duplicate finalized sentence keys were found."
+  )
+}
+
+# 3. Join parsed tokens to the validated structure
+
+joined_body_tokens <- current_texts_parsed |>
+  rename(
+    parsed_paragraph_id = paragraph_id
+  ) |>
+  mutate(
+    token_id_numeric = suppressWarnings(
+      as.integer(token_id)
+    )
+  )
+
+if (any(is.na(joined_body_tokens$token_id_numeric))) {
+  stop(
+    "At least one token_id could not be converted ",
+    "to numeric order."
+  )
+}
+
+joined_body_tokens <- joined_body_tokens |>
+  inner_join(
+    sentence_structure_bridge,
+    by = c(
+      "text_id",
+      "sentence_id"
+    ),
+    relationship = "many-to-one"
+  ) |>
+  arrange(
+    text_id,
+    sentence_number,
+    token_id_numeric
+  ) |>
+  group_by(
+    text_id,
+    sentence_id
+  ) |>
+  mutate(
+    token_position = dplyr::row_number(),
+
+    token_normalized =
+      normalize_structure_text(token)
+  ) |>
+  ungroup()
+
+# 4. Locate the first body token in the mixed sentence
+
+mixed_sentence_start <- joined_body_tokens |>
+  filter(
+    contains_heading_material
+  ) |>
+  group_by(
+    text_id,
+    sentence_id
+  ) |>
+  summarise(
+    first_body_word = stringr::str_extract(
+      dplyr::first(
+        sentence_body_normalized
+      ),
+      "^\\S+"
+    ),
+
+    body_start_position = match(
+      first_body_word,
+      token_normalized
+    ),
+
+    .groups = "drop"
+  )
+
+print(
+  mixed_sentence_start,
+  n = Inf,
+  width = Inf
+)
+
+if (
+  nrow(mixed_sentence_start) != 1L ||
+  any(is.na(
+    mixed_sentence_start$
+      body_start_position
+  ))
+) {
+  stop(
+    "The beginning of the mixed body sentence could not be located."
+  )
+}
+
+# 5. Retain ordinary sentences and trim only the mixed sentence
+
+body_token_layer <- joined_body_tokens |>
+  left_join(
+    mixed_sentence_start |>
+      select(
+        text_id,
+        sentence_id,
+        body_start_position
+      ),
+    by = c(
+      "text_id",
+      "sentence_id"
+    ),
+    relationship = "many-to-one"
+  ) |>
+  filter(
+    !contains_heading_material |
+      token_position >= body_start_position
+  ) |>
+  mutate(
+    lemma_clean = stringr::str_to_lower(
+      stringr::str_squish(
+        as.character(lemma)
+      )
+    ),
+
+    pos = stringr::str_to_upper(
+      as.character(pos)
+    ),
+
+    included_in_lsa = (
+      pos %in% lsa_pos_keep &
+      !is.na(lemma_clean) &
+      lemma_clean != ""
+    )
+  ) |>
+  arrange(
+    text_id,
+    sentence_number,
+    token_id
+  )
+
+# 7. Validate final structural counts
+
+body_token_audit <- body_token_layer |>
+  summarise(
+    n_body_sentences = n_distinct(
+      interaction(
+        text_id,
+        sentence_id,
+        drop = TRUE
+      )
+    ),
+
+    n_paragraphs = n_distinct(
+      interaction(
+        text_id,
+        paragraph_number,
+        drop = TRUE
+      )
+    ),
+
+    n_body_tokens = dplyr::n(),
+
+    n_lsa_tokens = sum(
+      included_in_lsa
+    )
+  )
+
+print(
+  body_token_audit,
+  n = Inf,
+  width = Inf
+)
+
+if (
+  body_token_audit$n_body_sentences != 106L ||
+  body_token_audit$n_paragraphs != 15L
+) {
+  stop(
+    "The final body-token structure has unexpected counts."
+  )
+}
+
+message(
+  "Validated heading-free body-token layer created successfully."
+)
+```
+
+# MODUL 6.20 — Build ordered sentence and paragraph segment tables
+
+```{r}
+
+# MODUL 6.20 — Build ordered sentence and paragraph segment tables
+
+# 1. Validate required inputs
+
+required_objects <- c(
+  "body_token_layer",
+  "paragraph_section_map"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+required_body_columns <- c(
+  "text_id",
+  "model",
+  "sentence_id",
+  "sentence_number",
+  "sentence_mapping_status",
+  "sentence_body_normalized",
+  "paragraph_id",
+  "paragraph_number",
+  "section_id",
+  "subheading_id",
+  "subheading_text",
+  "token_id_numeric",
+  "token",
+  "lemma_clean",
+  "included_in_lsa"
+)
+
+missing_body_columns <- setdiff(
+  required_body_columns,
+  names(body_token_layer)
+)
+
+if (length(missing_body_columns) > 0L) {
+  stop(
+    "body_token_layer is missing required columns: ",
+    paste(missing_body_columns, collapse = ", ")
+  )
+}
+
+# 2. Establish correct numeric token order
+
+ordered_body_tokens <- body_token_layer |>
+  arrange(
+    text_id,
+    paragraph_number,
+    sentence_number,
+    token_id_numeric
+  )
+
+# 3. Build the sentence segment table
+
+sentence_segment_table <- ordered_body_tokens |>
+  group_by(
+    text_id,
+    model,
+    sentence_id,
+    sentence_number,
+    sentence_mapping_status,
+    sentence_body_normalized,
+    paragraph_id,
+    paragraph_number,
+    section_id,
+    subheading_id,
+    subheading_text
+  ) |>
+  summarise(
+    n_tokens_total = dplyr::n(),
+
+    n_lsa_tokens = sum(
+      included_in_lsa,
+      na.rm = TRUE
+    ),
+
+    body_token_text = paste(
+      token[
+        !is.na(token) &
+        token != ""
+      ],
+      collapse = " "
+    ),
+
+    lsa_lemma_text = paste(
+      lemma_clean[
+        included_in_lsa %in% TRUE &
+        !is.na(lemma_clean) &
+        lemma_clean != ""
+      ],
+      collapse = " "
+    ),
+
+    .groups = "drop"
+  ) |>
+  mutate(
+    segment_id = paste0(
+      text_id,
+      "_S",
+      stringr::str_pad(
+        sentence_number,
+        width = 3,
+        pad = "0"
+      )
+    )
+  ) |>
+  relocate(
+    segment_id,
+    .after = model
+  ) |>
+  arrange(
+    text_id,
+    sentence_number
+  )
+
+# 4. Summarize ordered body tokens by paragraph
+
+paragraph_token_summary <- ordered_body_tokens |>
+  group_by(
+    text_id,
+    paragraph_id,
+    paragraph_number
+  ) |>
+  summarise(
+    n_sentences = dplyr::n_distinct(
+      sentence_id
+    ),
+
+    n_tokens_total = dplyr::n(),
+
+    n_lsa_tokens = sum(
+      included_in_lsa,
+      na.rm = TRUE
+    ),
+
+    body_token_text = paste(
+      token[
+        !is.na(token) &
+        token != ""
+      ],
+      collapse = " "
+    ),
+
+    lsa_lemma_text = paste(
+      lemma_clean[
+        included_in_lsa %in% TRUE &
+        !is.na(lemma_clean) &
+        lemma_clean != ""
+      ],
+      collapse = " "
+    ),
+
+    .groups = "drop"
+  )
+
+# 5. Build the paragraph segment table
+
+paragraph_segment_table <- paragraph_section_map |>
+  filter(
+    mapping_status == "mapped"
+  ) |>
+  select(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    section_id,
+    subheading_id,
+    subheading_text,
+    paragraph_text
+  ) |>
+  left_join(
+    paragraph_token_summary,
+    by = c(
+      "text_id",
+      "paragraph_id",
+      "paragraph_number"
+    ),
+    relationship = "one-to-one"
+  ) |>
+  mutate(
+    segment_id = paste0(
+      text_id,
+      "_P",
+      stringr::str_pad(
+        paragraph_number,
+        width = 2,
+        pad = "0"
+      )
+    )
+  ) |>
+  relocate(
+    segment_id,
+    .after = model
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number
+  )
+
+# 6. Validate segment counts and structural completeness
+
+segment_table_audit <- tibble::tibble(
+  segment_level = c(
+    "sentence",
+    "paragraph"
+  ),
+
+  expected_segments = c(
+    106L,
+    15L
+  ),
+
+  observed_segments = c(
+    nrow(sentence_segment_table),
+    nrow(paragraph_segment_table)
+  ),
+
+  n_empty_lsa_segments = c(
+    sum(
+      sentence_segment_table$n_lsa_tokens == 0L
+    ),
+
+    sum(
+      paragraph_segment_table$n_lsa_tokens == 0L
+    )
+  )
+) |>
+  mutate(
+    segment_count_valid = (
+      expected_segments ==
+      observed_segments
+    )
+  )
+
+duplicate_sentence_segments <- sentence_segment_table |>
+  count(segment_id) |>
+  filter(n > 1L)
+
+duplicate_paragraph_segments <- paragraph_segment_table |>
+  count(segment_id) |>
+  filter(n > 1L)
+
+if (
+  any(!segment_table_audit$segment_count_valid) ||
+  nrow(duplicate_sentence_segments) > 0L ||
+  nrow(duplicate_paragraph_segments) > 0L ||
+  any(is.na(paragraph_segment_table$n_tokens_total))
+) {
+  stop(
+    "Sentence or paragraph segment validation failed."
+  )
+}
+
+print(
+  segment_table_audit,
+  n = Inf,
+  width = Inf
+)
+
+message(
+  "Ordered segment tables created: ",
+  nrow(sentence_segment_table),
+  " sentences and ",
+  nrow(paragraph_segment_table),
+  " paragraphs."
+)
+```
+
+# Modul 6.21 — Build the ordered whole-body-text table and final audit
+
+```{r}
+
+# MODUL 6.21 — Build the ordered whole-body-text table and final audit
+
+# 1. Validate required inputs
+
+required_objects <- c(
+  "ordered_body_tokens",
+  "sentence_segment_table",
+  "paragraph_segment_table",
+  "segment_table_audit"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+# 2. Build one ordered whole-body-text segment per target text
+
+whole_body_text_segment_table <- ordered_body_tokens |>
+  arrange(
+    text_id,
+    paragraph_number,
+    sentence_number,
+    token_id_numeric
+  ) |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  summarise(
+    n_paragraphs = dplyr::n_distinct(
+      paragraph_id
+    ),
+
+    n_sentences = dplyr::n_distinct(
+      sentence_id
+    ),
+
+    n_tokens_total = dplyr::n(),
+
+    n_lsa_tokens = sum(
+      included_in_lsa,
+      na.rm = TRUE
+    ),
+
+    body_token_text = paste(
+      token[
+        !is.na(token) &
+        token != ""
+      ],
+      collapse = " "
+    ),
+
+    lsa_lemma_text = paste(
+      lemma_clean[
+        included_in_lsa %in% TRUE &
+        !is.na(lemma_clean) &
+        lemma_clean != ""
+      ],
+      collapse = " "
+    ),
+
+    .groups = "drop"
+  ) |>
+  mutate(
+    segment_id = paste0(
+      text_id,
+      "_BODY"
+    )
+  ) |>
+  relocate(
+    segment_id,
+    .after = model
+  ) |>
+  arrange(text_id)
+
+# 3. Compare whole-text counts with sentence and paragraph tables
+
+expected_text_counts <- paragraph_segment_table |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  summarise(
+    expected_paragraphs = dplyr::n(),
+
+    expected_sentences = sum(
+      n_sentences,
+      na.rm = TRUE
+    ),
+
+    expected_tokens = sum(
+      n_tokens_total,
+      na.rm = TRUE
+    ),
+
+    expected_lsa_tokens = sum(
+      n_lsa_tokens,
+      na.rm = TRUE
+    ),
+
+    .groups = "drop"
+  )
+
+whole_text_count_audit <- whole_body_text_segment_table |>
+  select(
+    text_id,
+    model,
+    n_paragraphs,
+    n_sentences,
+    n_tokens_total,
+    n_lsa_tokens
+  ) |>
+  left_join(
+    expected_text_counts,
+    by = c(
+      "text_id",
+      "model"
+    ),
+    relationship = "one-to-one"
+  ) |>
+  mutate(
+    paragraph_count_valid = (
+      n_paragraphs ==
+      expected_paragraphs
+    ),
+
+    sentence_count_valid = (
+      n_sentences ==
+      expected_sentences
+    ),
+
+    token_count_valid = (
+      n_tokens_total ==
+      expected_tokens
+    ),
+
+    lsa_token_count_valid = (
+      n_lsa_tokens ==
+      expected_lsa_tokens
+    ),
+
+    all_counts_valid = (
+      paragraph_count_valid &
+      sentence_count_valid &
+      token_count_valid &
+      lsa_token_count_valid
+    )
+  ) |>
+  arrange(text_id)
+
+# 4. Extend the segment-level audit
+
+final_segment_table_audit <- bind_rows(
+  segment_table_audit,
+
+  tibble::tibble(
+    segment_level = "whole_body_text",
+    expected_segments = 4L,
+    observed_segments =
+      nrow(whole_body_text_segment_table),
+    n_empty_lsa_segments = sum(
+      whole_body_text_segment_table$
+        n_lsa_tokens == 0L
+    ),
+    segment_count_valid = (
+      nrow(
+        whole_body_text_segment_table
+      ) == 4L
+    )
+  )
+)
+
+# 5. Validate the final preparation structure
+
+duplicate_whole_text_segments <-
+  whole_body_text_segment_table |>
+  count(segment_id) |>
+  filter(n > 1L)
+
+if (
+  any(
+    !final_segment_table_audit$
+      segment_count_valid
+  ) ||
+  any(
+    !whole_text_count_audit$
+      all_counts_valid
+  ) ||
+  nrow(
+    duplicate_whole_text_segments
+  ) > 0L ||
+  any(
+    whole_body_text_segment_table$
+      n_lsa_tokens == 0L
+  )
+) {
+  stop(
+    "Final whole-body-text or cross-level validation failed."
+  )
+}
+
+# 6. Display the final audits
+
+message("Whole-body-text count audit:")
+
+print(
+  whole_text_count_audit,
+  n = Inf,
+  width = Inf
+)
+
+message("Final segment-table audit:")
+
+print(
+  final_segment_table_audit,
+  n = Inf,
+  width = Inf
+)
+
+message(
+  "Final preparation tables validated: ",
+  nrow(sentence_segment_table),
+  " sentences, ",
+  nrow(paragraph_segment_table),
+  " paragraphs, and ",
+  nrow(whole_body_text_segment_table),
+  " whole body texts."
+)
+```
+
+# Modul 6 - 6.22 — Freeze and export the validated MODUL 6 preparation inputs
+
+```{r}
+# MODUL 6.22 — Freeze and export the validated MODUL 6 preparation inputs
+
+# 1. Validate all objects required for the frozen bundle
+
+required_objects <- c(
+  "lsa_dimensions",
+  "lsa_pos_keep",
+  "module_6_output_dir",
+  "shared_prompt_headings",
+  "introduced_subheadings",
+  "paragraph_section_map",
+  "structural_audit",
+  "sentence_paragraph_map",
+  "body_sentence_map",
+  "sentence_mapping_audit",
+  "fallback_assignments",
+  "sentence_segment_table",
+  "paragraph_segment_table",
+  "whole_body_text_segment_table",
+  "final_segment_table_audit",
+  "whole_text_count_audit"
+)
+
+missing_objects <- required_objects[
+  !vapply(
+    required_objects,
+    exists,
+    logical(1),
+    inherits = TRUE
+  )
+]
+
+if (length(missing_objects) > 0L) {
+  stop(
+    "Missing required objects: ",
+    paste(missing_objects, collapse = ", ")
+  )
+}
+
+# 2. Confirm that all final audits passed
+
+if (
+  any(!structural_audit$section_mapping_valid) ||
+  any(
+    !sentence_mapping_audit$
+      all_body_sentences_mapped_once
+  ) ||
+  any(
+    !final_segment_table_audit$
+      segment_count_valid
+  ) ||
+  any(
+    !whole_text_count_audit$
+      all_counts_valid
+  )
+) {
+  stop(
+    "At least one structural or segment-table audit failed. ",
+    "The MODUL 6 inputs must not be frozen."
+  )
+}
+
+if (
+  nrow(sentence_segment_table) != 106L ||
+  nrow(paragraph_segment_table) != 15L ||
+  nrow(whole_body_text_segment_table) != 4L
+) {
+  stop(
+    "Unexpected final segment counts."
+  )
+}
+
+# 3. Define the frozen-output paths
+
+m6_prep_output_dir <- "M6_prep_outputs"
+
+dir.create(
+  m6_prep_output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+dir.create(
+  module_6_output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+lsa_input_bundle_path <- file.path(
+  m6_prep_output_dir,
+  "modul_6_LSA_inputs.rds"
+)
+
+paragraph_map_csv_path <- file.path(
+  module_6_output_dir,
+  "modul_6_paragraph_section_map.csv"
+)
+
+structural_audit_csv_path <- file.path(
+  module_6_output_dir,
+  "modul_6_structural_audit.csv"
+)
+
+# 4. Assemble the frozen MODUL 6 input bundle
+
+modul_6_lsa_inputs <- list(
+  metadata = list(
+    module =
+      "MODUL 6 LSA structural preparation",
+
+    source_qmd =
+      "CCP_generation_Modul_6_LSA.qmd",
+
+    lsa_dimensions =
+      lsa_dimensions,
+
+    lsa_pos_keep =
+      lsa_pos_keep,
+
+    n_target_texts =
+      nrow(
+        whole_body_text_segment_table
+      ),
+
+    n_sentence_segments =
+      nrow(
+        sentence_segment_table
+      ),
+
+    n_paragraph_segments =
+      nrow(
+        paragraph_segment_table
+      ),
+
+    n_whole_body_text_segments =
+      nrow(
+        whole_body_text_segment_table
+      )
+  ),
+
+  shared_prompt_headings =
+    shared_prompt_headings,
+
+  introduced_subheadings =
+    introduced_subheadings,
+
+  paragraph_section_map =
+    paragraph_section_map,
+
+  structural_audit =
+    structural_audit,
+
+  sentence_paragraph_map =
+    sentence_paragraph_map,
+
+  body_sentence_map =
+    body_sentence_map,
+
+  sentence_mapping_audit =
+    sentence_mapping_audit,
+
+  fallback_assignments =
+    fallback_assignments,
+
+  sentence_segment_table =
+    sentence_segment_table,
+
+  paragraph_segment_table =
+    paragraph_segment_table,
+
+  whole_body_text_segment_table =
+    whole_body_text_segment_table,
+
+  final_segment_table_audit =
+    final_segment_table_audit,
+
+  whole_text_count_audit =
+    whole_text_count_audit
+)
+
+# 5. Write the frozen bundle and inspection CSVs
+
+saveRDS(
+  modul_6_lsa_inputs,
+  lsa_input_bundle_path,
+  version = 3
+)
+
+readr::write_csv(
+  paragraph_section_map,
+  paragraph_map_csv_path
+)
+
+readr::write_csv(
+  structural_audit,
+  structural_audit_csv_path
+)
+
+# 6. Reload and validate the frozen bundle
+
+frozen_bundle_check <- readRDS(
+  lsa_input_bundle_path
+)
+
+required_bundle_entries <- c(
+  "metadata",
+  "shared_prompt_headings",
+  "introduced_subheadings",
+  "paragraph_section_map",
+  "structural_audit",
+  "sentence_paragraph_map",
+  "body_sentence_map",
+  "sentence_mapping_audit",
+  "fallback_assignments",
+  "sentence_segment_table",
+  "paragraph_segment_table",
+  "whole_body_text_segment_table",
+  "final_segment_table_audit",
+  "whole_text_count_audit"
+)
+
+missing_bundle_entries <- setdiff(
+  required_bundle_entries,
+  names(frozen_bundle_check)
+)
+
+if (length(missing_bundle_entries) > 0L) {
+  stop(
+    "Frozen bundle is missing entries: ",
+    paste(
+      missing_bundle_entries,
+      collapse = ", "
+    )
+  )
+}
+
+if (
+  nrow(
+    frozen_bundle_check$
+      sentence_segment_table
+  ) != 106L ||
+  nrow(
+    frozen_bundle_check$
+      paragraph_segment_table
+  ) != 15L ||
+  nrow(
+    frozen_bundle_check$
+      whole_body_text_segment_table
+  ) != 4L
+) {
+  stop(
+    "Frozen bundle validation failed."
+  )
+}
+
+# 7. Display the exported-file manifest
+
+freeze_manifest <- tibble::tibble(
+  output_type = c(
+    "Frozen RDS bundle",
+    "Paragraph-section audit CSV",
+    "Structural audit CSV"
+  ),
+
+  file_path = c(
+    normalizePath(
+      lsa_input_bundle_path,
+      mustWork = TRUE
+    ),
+
+    normalizePath(
+      paragraph_map_csv_path,
+      mustWork = TRUE
+    ),
+
+    normalizePath(
+      structural_audit_csv_path,
+      mustWork = TRUE
+    )
+  ),
+
+  size_bytes = file.info(
+    c(
+      lsa_input_bundle_path,
+      paragraph_map_csv_path,
+      structural_audit_csv_path
+    )
+  )$size
+)
+
+print(
+  freeze_manifest,
+  n = Inf,
+  width = Inf
+)
+
+message(
+  "MODUL 6 structural preparation frozen successfully."
+)
+```
+# ---- END OF MODUL 6_PREP_FOR_LSA-------------------
+
+
+# Note: source_mapping_position
+
+= position inferred from the order of mappings in inv_so.txt
+
+segment_id = order among the retained topic-filtered sentences from that document
+
+
+# Independent check 1
+
+```{r}
+bundle_path <- file.path(
+  "../data_prep_CCP_output",
+  "l1_corpus_reference_bundle_corrected.rds"
+)
+
+l1_bundle <- readRDS(bundle_path)
+
+doc_tab <- l1_bundle$documents
+sent_tab <- l1_bundle$sentences
+tok_tab <- l1_bundle$tokens
+
+summary_table <- tibble::tibble(
+  metric   = c(
+    "documents",
+    "sentences",
+    "tokens",
+    "LSA-empty sentences",
+    "LSA-empty documents",
+    "UDPipe-resplit sentences"
+  ),
+  observed = c(
+    nrow(doc_tab),
+    nrow(sent_tab),
+    nrow(tok_tab),
+    sum(!sent_tab$has_selected_lsa_terms),
+    sum(!doc_tab$has_selected_lsa_terms),
+    sum(sent_tab$udpipe_resplit)
+  )
+)
+
+print(summary_table, n = Inf)
+```
+
+# Independent check 2
+
+```{r}
+bundle_path <- file.path(
+  "../data_prep_CCP_output",
+  "l1_corpus_reference_bundle_corrected.rds"
+)
+
+l1_bundle <- readRDS(bundle_path)
+
+set.seed(20240714)  # for reproducibility; change or drop if you like
+
+sent_sample <- l1_bundle$sentences |>
+  dplyr::select(
+    document_uid,
+    sentence_uid,
+    sentence_text = dplyr::any_of(c(
+      "sentence_text",
+      "source_sentence_text",
+      "text_unit",
+      "text"
+    ))
+  ) |>
+  dplyr::distinct() |>
+  dplyr::slice_sample(n = 10)
+
+print(sent_sample, n = Inf, width = Inf)
+```
+
+# # Independent check 3
+
+```{r}
+doc_sample <- l1_bundle$documents |>
+  dplyr::semi_join(
+    sent_sample,
+    by = "document_uid"
+  )
+
+print(doc_sample, n = Inf, width = Inf)
+```
+
+# # Independent check 4
+
+```{r}
+bundle_path <- file.path(
+  "../data_prep_CCP_output",
+  "l1_corpus_reference_bundle_corrected.rds"
+)
+
+l1_bundle <- readRDS(bundle_path)
+doc_tab   <- l1_bundle$documents
+
+na_by_corpus <- function(df, corpus_col = "corpus_name") {
+  corpus_vals <- df[[corpus_col]]
+
+  purrr::map_dfr(
+    unique(corpus_vals),
+    function(corpus) {
+      sub <- df[corpus_vals == corpus, , drop = FALSE]
+
+      tibble::tibble(
+        corpus = corpus,
+        column = names(sub),
+        n_na   = vapply(sub, function(x) sum(is.na(x)), integer(1)),
+        n_row  = nrow(sub)
+      ) |>
+        dplyr::filter(n_na > 0L)
+    }
+  ) |>
+    dplyr::arrange(corpus, dplyr::desc(n_na))
+}
+
+na_doc_summary <- na_by_corpus(doc_tab, corpus_col = "corpus_name")
+
+print(na_doc_summary, n = Inf)
+```
+
+
+

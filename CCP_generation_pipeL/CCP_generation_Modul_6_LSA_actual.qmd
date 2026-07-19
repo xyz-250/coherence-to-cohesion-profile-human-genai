@@ -1,0 +1,5721 @@
+---
+title: "CCP_generation_Modul_6_LSA_actual"
+format: html
+editor: visual
+execute:
+  echo: true
+  warning: true
+  message: true
+---
+
+# Intro: # MODUL 6 — Actual Latent Semantic Analysis
+
+This document constructs the fixed L1-Corpus semantic reference space, folds the prepared target segments into that space without refitting it, and calculates the x3 and x4 semantic-similarity measures.
+
+The document reads only frozen inputs. It does not reconstruct the L1 corpus, rerun UDPipe, reread the raw target texts, relocate headings, or rebuild the validated sentence and paragraph structure.
+
+
+#
+
+```{r}
+# MODUL 6.23 — Set up the numerical LSA workflow
+
+# 1. Validate the required packages
+
+required_packages <- c(
+  "dplyr",
+  "tidyr",
+  "purrr",
+  "readr",
+  "stringr",
+  "tibble",
+  "quanteda",
+  "Matrix",
+  "irlba"
+)
+
+missing_packages <- required_packages[
+  !vapply(
+    required_packages,
+    requireNamespace,
+    logical(1),
+    quietly = TRUE
+  )
+]
+
+if (length(missing_packages) > 0L) {
+  stop(
+    "Missing required packages: ",
+    paste(
+      missing_packages,
+      collapse = ", "
+    ),
+    ". Install them before running MODUL 6."
+  )
+}
+
+# 2. Attach the required packages
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(readr)
+library(stringr)
+library(tibble)
+library(quanteda)
+library(Matrix)
+library(irlba)
+
+# 3. Set general options
+
+options(
+  dplyr.summarise.inform = FALSE,
+  scipen = 999
+)
+
+# 4. Define the fixed LSA configuration
+
+lsa_dimensions <- 50L
+
+lsa_pos_keep <- c(
+  "NOUN",
+  "PROPN",
+  "VERB",
+  "ADJ",
+  "ADV",
+  "CCONJ",
+  "SCONJ"
+)
+
+lsa_tf_method <- "log1p"
+
+lsa_idf_method <- "log_N_over_df"
+
+lsa_random_seed <- 20260714L
+
+# 5. Validate the fixed configuration
+
+if (
+  lsa_dimensions != 50L ||
+  length(lsa_pos_keep) != 7L ||
+  anyDuplicated(lsa_pos_keep) > 0L
+) {
+  stop(
+    "The fixed MODUL 6 LSA configuration is invalid."
+  )
+}
+
+# 6. Display the active configuration
+
+lsa_configuration <- tibble::tibble(
+  parameter = c(
+    "Dimensions",
+    "TF weighting",
+    "IDF weighting",
+    "Included UPOS categories",
+    "SVD random seed"
+  ),
+
+  value = c(
+    as.character(lsa_dimensions),
+    "log(1 + tf)",
+    "log(N / df)",
+    paste(
+      lsa_pos_keep,
+      collapse = ", "
+    ),
+    as.character(lsa_random_seed)
+  )
+)
+
+print(
+  lsa_configuration,
+  n = Inf,
+  width = Inf
+)
+
+message(
+  "MODUL 6 actual LSA setup complete."
+)
+```
+# MODUL 6.24 — Register and validate frozen paths
+
+```{r}
+
+# MODUL 6.24 — Register and validate frozen paths
+
+project_root <- normalizePath(
+  "..",
+  winslash = "/",
+  mustWork = TRUE
+)
+
+actual_lsa_input_paths <- c(
+  l1_reference_bundle = file.path(
+    project_root,
+    "data_prep_CCP_output",
+    "l1_corpus_reference_bundle_corrected.rds"
+  ),
+  target_input_bundle = file.path(
+    project_root,
+    "CCP_generation_pipeL",
+    "M6_prep_outputs",
+    "modul_6_LSA_inputs.rds"
+  )
+)
+
+actual_lsa_output_dir <- file.path(
+  project_root,
+  "measure_outputs"
+)
+
+dir.create(
+  actual_lsa_output_dir,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+missing_inputs <- actual_lsa_input_paths[
+  !file.exists(actual_lsa_input_paths)
+]
+
+if (length(missing_inputs) > 0L) {
+  stop(
+    "Missing frozen input files: ",
+    paste(
+      names(missing_inputs),
+      collapse = ", "
+    )
+  )
+}
+
+actual_lsa_path_audit <- tibble::tibble(
+  input = names(actual_lsa_input_paths),
+  path = unname(actual_lsa_input_paths),
+  exists = file.exists(actual_lsa_input_paths)
+)
+
+print(
+  actual_lsa_path_audit,
+  n = Inf,
+  width = Inf
+)
+
+message(
+  "Frozen actual LSA paths validated successfully."
+)
+```
+
+# # MODUL 6.25 — Load the frozen L1 and target bundles
+
+```{r}
+# MODUL 6.25 — Load the frozen L1 and target bundles
+
+l1_reference_bundle <- readRDS(
+  actual_lsa_input_paths[["l1_reference_bundle"]]
+)
+
+target_input_bundle <- readRDS(
+  actual_lsa_input_paths[["target_input_bundle"]]
+)
+
+required_l1_objects <- c(
+  "documents",
+  "sentences",
+  "tokens",
+  "metadata"
+)
+
+required_target_objects <- c(
+  "sentence_segment_table",
+  "paragraph_segment_table",
+  "whole_body_text_segment_table",
+  "shared_prompt_headings",
+  "introduced_subheadings",
+  "paragraph_section_map",
+  "structural_audit",
+  "sentence_mapping_audit"
+)
+
+missing_l1_objects <- setdiff(
+  required_l1_objects,
+  names(l1_reference_bundle)
+)
+
+missing_target_objects <- setdiff(
+  required_target_objects,
+  names(target_input_bundle)
+)
+
+if (length(missing_l1_objects) > 0L) {
+  stop(
+    "Missing L1 bundle objects: ",
+    paste(missing_l1_objects, collapse = ", ")
+  )
+}
+
+if (length(missing_target_objects) > 0L) {
+  stop(
+    "Missing target bundle objects: ",
+    paste(missing_target_objects, collapse = ", ")
+  )
+}
+
+if (!isTRUE(
+  l1_reference_bundle$metadata$final_audit_passed
+)) {
+  stop(
+    "The frozen L1 reference bundle did not pass its final audit."
+  )
+}
+
+bundle_audit <- tibble::tibble(
+  bundle = c(
+    "L1 reference bundle",
+    "Target preparation bundle"
+  ),
+  n_objects = c(
+    length(l1_reference_bundle),
+    length(target_input_bundle)
+  ),
+  valid = TRUE
+)
+
+print(
+  bundle_audit,
+  n = Inf
+)
+
+message(
+  "Frozen L1 and target bundles loaded successfully."
+)
+```
+# MODUL 6.26 — Extract and validate the required objects
+
+```{r}
+
+
+# MODUL 6.26 — Extract and validate the required objects
+
+# Extract the frozen L1 objects
+
+l1_documents <- l1_reference_bundle$documents
+l1_sentences <- l1_reference_bundle$sentences
+l1_tokens <- l1_reference_bundle$tokens
+l1_metadata <- l1_reference_bundle$metadata
+
+# Extract the frozen target objects
+
+sentence_segment_table <-
+  target_input_bundle$sentence_segment_table
+
+paragraph_segment_table <-
+  target_input_bundle$paragraph_segment_table
+
+whole_body_text_segment_table <-
+  target_input_bundle$whole_body_text_segment_table
+
+shared_prompt_headings <-
+  target_input_bundle$shared_prompt_headings
+
+introduced_subheadings <-
+  target_input_bundle$introduced_subheadings
+
+paragraph_section_map <-
+  target_input_bundle$paragraph_section_map
+
+structural_audit <-
+  target_input_bundle$structural_audit
+
+sentence_mapping_audit <-
+  target_input_bundle$sentence_mapping_audit
+
+# Validate the frozen inputs
+
+stopifnot(
+  isTRUE(l1_metadata$final_audit_passed),
+  nrow(l1_documents) == 2004L,
+  nrow(l1_sentences) == 5252L,
+  nrow(l1_tokens) == 108519L,
+  nrow(sentence_segment_table) == 106L,
+  nrow(paragraph_segment_table) == 15L,
+  nrow(whole_body_text_segment_table) == 4L
+)
+
+# Display the validated inventory
+
+frozen_object_audit <- tibble::tibble(
+  object = c(
+    "L1 documents",
+    "L1 source sentences",
+    "L1 parsed tokens",
+    "Target sentence segments",
+    "Target paragraph segments",
+    "Target whole-body-text segments",
+    "Shared prompt headings",
+    "Paragraph-section mappings"
+  ),
+  n_rows = c(
+    nrow(l1_documents),
+    nrow(l1_sentences),
+    nrow(l1_tokens),
+    nrow(sentence_segment_table),
+    nrow(paragraph_segment_table),
+    nrow(whole_body_text_segment_table),
+    nrow(shared_prompt_headings),
+    nrow(paragraph_section_map)
+  )
+)
+
+print(
+  frozen_object_audit,
+  n = Inf
+)
+
+message(
+  "Frozen actual LSA objects extracted and validated successfully."
+)
+```
+
+# MODUL 6.27 — Prepare the selected L1 token layer
+
+```{r}
+
+# MODUL 6.27 — Prepare the selected L1 token layer
+
+required_token_columns <- c(
+  "document_uid",
+  "sentence_uid",
+  "token_uid",
+  "lemma",
+  "lemma_clean",
+  "pos",
+  "lsa_selected_final"
+)
+
+missing_token_columns <- setdiff(
+  required_token_columns,
+  names(l1_tokens)
+)
+
+if (length(missing_token_columns) > 0L) {
+  stop(
+    "Missing required token columns: ",
+    paste(missing_token_columns, collapse = ", ")
+  )
+}
+
+clean_lsa_term <- function(x) {
+  x |>
+    as.character() |>
+    stringr::str_squish() |>
+    stringr::str_to_lower() |>
+    dplyr::na_if("") |>
+    dplyr::na_if("_")
+}
+
+l1_lsa_tokens <- l1_tokens |>
+  dplyr::mutate(
+    token_order = dplyr::row_number(),
+
+    lemma_primary = clean_lsa_term(
+      lemma
+    ),
+
+    lemma_fallback = clean_lsa_term(
+      lemma_clean
+    ),
+
+    lsa_term = dplyr::coalesce(
+      lemma_primary,
+      lemma_fallback
+    ),
+
+    lsa_pos = stringr::str_to_upper(
+      as.character(pos)
+    )
+  ) |>
+  dplyr::filter(
+    lsa_selected_final
+  )
+
+missing_lsa_terms <- l1_lsa_tokens |>
+  dplyr::filter(
+    is.na(lsa_term)
+  )
+
+if (nrow(missing_lsa_terms) > 0L) {
+  print(
+    missing_lsa_terms |>
+      dplyr::select(
+        document_uid,
+        sentence_uid,
+        token_uid,
+        lemma,
+        lemma_clean,
+        pos
+      ),
+    n = Inf
+  )
+
+  stop(
+    nrow(missing_lsa_terms),
+    " selected tokens still lack a usable lemma."
+  )
+}
+
+l1_lsa_tokens <- l1_lsa_tokens |>
+  dplyr::select(
+    document_uid,
+    sentence_uid,
+    token_uid,
+    token_order,
+    lsa_term,
+    lsa_pos
+  )
+
+stopifnot(
+  nrow(l1_lsa_tokens) == 56289L,
+  dplyr::n_distinct(
+    l1_lsa_tokens$document_uid
+  ) == 2004L,
+  all(
+    l1_lsa_tokens$lsa_pos %in%
+      lsa_pos_keep
+  ),
+  !anyDuplicated(
+    l1_lsa_tokens$token_uid
+  )
+)
+
+l1_lsa_token_audit <- l1_lsa_tokens |>
+  dplyr::count(
+    lsa_pos,
+    name = "n_tokens"
+  ) |>
+  dplyr::arrange(
+    match(
+      lsa_pos,
+      lsa_pos_keep
+    )
+  )
+
+print(
+  l1_lsa_token_audit,
+  n = Inf
+)
+
+message(
+  "Selected L1 token layer prepared: ",
+  format(
+    nrow(l1_lsa_tokens),
+    big.mark = ","
+  ),
+  " tokens across ",
+  format(
+    dplyr::n_distinct(
+      l1_lsa_tokens$document_uid
+    ),
+    big.mark = ","
+  ),
+  " documents."
+)
+ 
+
+  
+    
+      
+
+```
+
+
+```{r}
+# MODUL 6.27 — Prepare and freeze the selected L1 token layer
+
+l1_lsa_token_bundle_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_l1_token_layer.rds"
+)
+
+if (file.exists(l1_lsa_token_bundle_path)) {
+
+  # Load the previously frozen layer
+
+  l1_lsa_token_bundle <- readRDS(
+    l1_lsa_token_bundle_path
+  )
+
+  l1_lsa_tokens <-
+    l1_lsa_token_bundle$l1_lsa_tokens
+
+  excluded_lsa_tokens <-
+    l1_lsa_token_bundle$excluded_lsa_tokens
+
+  l1_lsa_token_audit <-
+    l1_lsa_token_bundle$l1_lsa_token_audit
+
+  message(
+    "Saved actual-LSA L1 token layer loaded."
+  )
+
+} else {
+
+  # Validate the required source columns
+
+  required_token_columns <- c(
+    "document_uid",
+    "sentence_uid",
+    "token_uid",
+    "lemma",
+    "lemma_clean",
+    "pos",
+    "lsa_selected_final"
+  )
+
+  missing_token_columns <- setdiff(
+    required_token_columns,
+    names(l1_tokens)
+  )
+
+  if (length(missing_token_columns) > 0L) {
+    stop(
+      "Missing required token columns: ",
+      paste(missing_token_columns, collapse = ", ")
+    )
+  }
+
+  # Clean and select the frozen LSA tokens
+
+  clean_lsa_term <- function(x) {
+    x |>
+      as.character() |>
+      stringr::str_squish() |>
+      stringr::str_to_lower() |>
+      dplyr::na_if("") |>
+      dplyr::na_if("_")
+  }
+
+  l1_lsa_tokens_selected <- l1_tokens |>
+    dplyr::mutate(
+      token_order = dplyr::row_number(),
+
+      lsa_term = dplyr::coalesce(
+        clean_lsa_term(lemma),
+        clean_lsa_term(lemma_clean)
+      ),
+
+      lsa_pos = stringr::str_to_upper(
+        stringr::str_squish(
+          as.character(pos)
+        )
+      )
+    ) |>
+    dplyr::filter(
+      lsa_selected_final
+    )
+
+  # Preserve but exclude two selected tokens without usable lemmas
+
+  excluded_lsa_tokens <- l1_lsa_tokens_selected |>
+    dplyr::filter(
+      is.na(lsa_term)
+    ) |>
+    dplyr::select(
+      document_uid,
+      sentence_uid,
+      token_uid,
+      lemma,
+      lemma_clean,
+      lsa_pos
+    )
+
+  l1_lsa_tokens <- l1_lsa_tokens_selected |>
+    dplyr::filter(
+      !is.na(lsa_term)
+    ) |>
+    dplyr::select(
+      document_uid,
+      sentence_uid,
+      token_uid,
+      token_order,
+      lsa_term,
+      lsa_pos
+    )
+
+  # Validate the final layer
+
+  stopifnot(
+    nrow(l1_lsa_tokens_selected) == 56289L,
+    nrow(excluded_lsa_tokens) == 2L,
+    nrow(l1_lsa_tokens) == 56287L,
+    dplyr::n_distinct(
+      l1_lsa_tokens$document_uid
+    ) == 2004L,
+    all(
+      l1_lsa_tokens$lsa_pos %in%
+        lsa_pos_keep
+    ),
+    !anyDuplicated(
+      l1_lsa_tokens$token_uid
+    )
+  )
+
+  # Create a compact audit
+
+  l1_lsa_token_audit <- l1_lsa_tokens |>
+    dplyr::count(
+      lsa_pos,
+      name = "n_tokens"
+    )
+
+  # Freeze the reusable layer
+
+  l1_lsa_token_bundle <- list(
+    l1_lsa_tokens = l1_lsa_tokens,
+    excluded_lsa_tokens = excluded_lsa_tokens,
+    l1_lsa_token_audit = l1_lsa_token_audit,
+    metadata = list(
+      n_selected = 56289L,
+      n_excluded = 2L,
+      n_usable = 56287L,
+      n_documents = 2004L,
+      lsa_pos_keep = lsa_pos_keep
+    )
+  )
+
+  saveRDS(
+    l1_lsa_token_bundle,
+    l1_lsa_token_bundle_path
+  )
+
+  message(
+    "Actual-LSA L1 token layer prepared and frozen."
+  )
+}
+
+print(
+  l1_lsa_token_audit,
+  n = Inf
+)
+
+message(
+  "Usable actual-LSA tokens: ",
+  format(nrow(l1_lsa_tokens), big.mark = ","),
+  " across ",
+  dplyr::n_distinct(l1_lsa_tokens$document_uid),
+  " documents."
+)
+```
+# MODUL 6.28 — Construct and freeze L1 document term sequences
+
+```{r}
+
+# MODUL 6.28 — Construct and freeze L1 document term sequences
+
+l1_document_terms_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_l1_document_terms.rds"
+)
+
+if (file.exists(l1_document_terms_path)) {
+
+  l1_document_terms <- readRDS(
+    l1_document_terms_path
+  )
+
+  message(
+    "Saved L1 document term sequences loaded."
+  )
+
+} else {
+
+  l1_document_terms <- l1_lsa_tokens |>
+    dplyr::arrange(
+      document_uid,
+      token_order
+    ) |>
+    dplyr::group_by(
+      document_uid
+    ) |>
+    dplyr::summarise(
+      lsa_text = stringr::str_c(
+        lsa_term,
+        collapse = " "
+      ),
+      n_lsa_tokens = dplyr::n(),
+      n_lsa_types = dplyr::n_distinct(
+        lsa_term
+      ),
+      .groups = "drop"
+    )
+
+  stopifnot(
+    nrow(l1_document_terms) == 2004L,
+    sum(l1_document_terms$n_lsa_tokens) == 56287L,
+    !anyDuplicated(
+      l1_document_terms$document_uid
+    ),
+    all(
+      !is.na(l1_document_terms$lsa_text) &
+        l1_document_terms$lsa_text != ""
+    )
+  )
+
+  saveRDS(
+    l1_document_terms,
+    l1_document_terms_path
+  )
+
+  message(
+    "L1 document term sequences constructed and frozen."
+  )
+}
+
+stopifnot(
+  nrow(l1_document_terms) == 2004L,
+  sum(l1_document_terms$n_lsa_tokens) == 56287L
+)
+
+print(
+  l1_document_terms |>
+    dplyr::summarise(
+      n_documents = dplyr::n(),
+      n_tokens = sum(n_lsa_tokens),
+      median_tokens = stats::median(
+        n_lsa_tokens
+      ),
+      min_tokens = min(
+        n_lsa_tokens
+      ),
+      max_tokens = max(
+        n_lsa_tokens
+      )
+    )
+)
+```
+# # MODUL 6.29 — Build and freeze the L1 document-feature matrix
+
+```{r}
+# MODUL 6.29 — Build and freeze the L1 document-feature matrix
+
+l1_dfm_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_l1_dfm.rds"
+)
+
+if (file.exists(l1_dfm_path)) {
+
+  l1_dfm <- readRDS(
+    l1_dfm_path
+  )
+
+  message(
+    "Saved L1 document-feature matrix loaded."
+  )
+
+} else {
+
+  l1_tokens_quanteda <- quanteda::tokens(
+    l1_document_terms$lsa_text,
+    what = "fastestword"
+  )
+
+  quanteda::docnames(
+    l1_tokens_quanteda
+  ) <- l1_document_terms$document_uid
+
+  l1_dfm <- quanteda::dfm(
+    l1_tokens_quanteda
+  )
+
+  stopifnot(
+    quanteda::ndoc(l1_dfm) == 2004L,
+    sum(l1_dfm) == 56287L,
+    quanteda::nfeat(l1_dfm) > lsa_dimensions,
+    identical(
+      quanteda::docnames(l1_dfm),
+      l1_document_terms$document_uid
+    )
+  )
+
+  saveRDS(
+    l1_dfm,
+    l1_dfm_path
+  )
+
+  message(
+    "L1 document-feature matrix built and frozen."
+  )
+}
+
+l1_dfm_audit <- tibble::tibble(
+  n_documents = quanteda::ndoc(l1_dfm),
+  n_features = quanteda::nfeat(l1_dfm),
+  n_tokens = sum(l1_dfm),
+  sparsity = quanteda::sparsity(l1_dfm)
+)
+
+print(
+  l1_dfm_audit,
+  n = Inf
+)
+```
+# MODUL 6.30 — Calculate and freeze L1 document frequencies and IDF
+
+```{r}
+
+# MODUL 6.30 — Calculate and freeze L1 document frequencies and IDF
+
+l1_idf_bundle_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_l1_idf.rds"
+)
+
+if (file.exists(l1_idf_bundle_path)) {
+
+  l1_idf_bundle <- readRDS(
+    l1_idf_bundle_path
+  )
+
+  l1_vocabulary <- l1_idf_bundle$vocabulary
+  l1_document_frequency <- l1_idf_bundle$document_frequency
+  l1_idf <- l1_idf_bundle$idf
+
+  message(
+    "Saved L1 vocabulary and IDF loaded."
+  )
+
+} else {
+
+  n_l1_documents <- quanteda::ndoc(
+    l1_dfm
+  )
+
+  l1_vocabulary <- quanteda::featnames(
+    l1_dfm
+  )
+
+  l1_document_frequency <- as.numeric(
+    Matrix::colSums(
+      l1_dfm > 0
+    )
+  )
+
+  names(l1_document_frequency) <-
+    l1_vocabulary
+
+  l1_idf <- log(
+    n_l1_documents /
+      l1_document_frequency
+  )
+
+  names(l1_idf) <- l1_vocabulary
+
+  stopifnot(
+    length(l1_vocabulary) == 9109L,
+    length(l1_document_frequency) == 9109L,
+    length(l1_idf) == 9109L,
+    all(l1_document_frequency >= 1L),
+    all(l1_document_frequency <= n_l1_documents),
+    all(is.finite(l1_idf)),
+    all(l1_idf >= 0),
+    identical(
+      names(l1_idf),
+      l1_vocabulary
+    )
+  )
+
+  l1_idf_bundle <- list(
+    vocabulary = l1_vocabulary,
+    document_frequency = l1_document_frequency,
+    idf = l1_idf,
+    n_documents = n_l1_documents,
+    formula = "log(N / df)"
+  )
+
+  saveRDS(
+    l1_idf_bundle,
+    l1_idf_bundle_path
+  )
+
+  message(
+    "L1 vocabulary and IDF calculated and frozen."
+  )
+}
+
+l1_idf_audit <- tibble::tibble(
+  n_documents = l1_idf_bundle$n_documents,
+  n_features = length(l1_vocabulary),
+  min_df = min(l1_document_frequency),
+  max_df = max(l1_document_frequency),
+  min_idf = min(l1_idf),
+  median_idf = stats::median(l1_idf),
+  max_idf = max(l1_idf)
+)
+
+print(
+  l1_idf_audit,
+  n = Inf
+)
+n_single_document_features = sum(
+  l1_document_frequency == 1L
+)
+```
+
+
+```{r}
+tibble::tibble(n_single_document_features = sum(l1_document_frequency == 1L), proportion_single_document_features = mean(l1_document_frequency == 1L))
+```
+
+# MODUL 6.31 — Apply and freeze log-TF–IDF weighting
+
+```{r}
+
+# MODUL 6.31 — Apply and freeze log-TF–IDF weighting
+
+l1_tfidf_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_l1_tfidf.rds"
+)
+
+if (file.exists(l1_tfidf_path)) {
+
+  l1_tfidf_matrix <- readRDS(
+    l1_tfidf_path
+  )
+
+  message(
+    "Saved L1 log-TF–IDF matrix loaded."
+  )
+
+} else {
+
+  # Convert the DFM to a sparse numeric matrix
+
+  l1_count_matrix <- methods::as(
+    l1_dfm,
+    "dgCMatrix"
+  )
+
+  # Validate vocabulary alignment
+
+  stopifnot(
+    identical(
+      colnames(l1_count_matrix),
+      l1_vocabulary
+    ),
+    identical(
+      names(l1_idf),
+      l1_vocabulary
+    )
+  )
+
+  # Apply TF = log(1 + tf) to nonzero entries
+
+  l1_log_tf_matrix <- l1_count_matrix
+  l1_log_tf_matrix@x <- log1p(
+    l1_log_tf_matrix@x
+  )
+
+  # Apply IDF = log(N / df)
+
+  l1_tfidf_matrix <- l1_log_tf_matrix %*%
+    Matrix::Diagonal(
+      x = as.numeric(l1_idf)
+    )
+
+  colnames(l1_tfidf_matrix) <- l1_vocabulary
+  rownames(l1_tfidf_matrix) <- quanteda::docnames(
+    l1_dfm
+  )
+
+  # Validate the weighted matrix
+
+  l1_tfidf_row_norms <- sqrt(
+    Matrix::rowSums(
+      l1_tfidf_matrix ^ 2
+    )
+  )
+
+  stopifnot(
+    all(
+      dim(l1_tfidf_matrix) ==
+        c(2004L, 9109L)
+    ),
+    all(is.finite(l1_tfidf_matrix@x)),
+    all(l1_tfidf_matrix@x > 0),
+    all(l1_tfidf_row_norms > 0)
+  )
+
+  saveRDS(
+    l1_tfidf_matrix,
+    l1_tfidf_path
+  )
+
+  message(
+    "L1 log-TF–IDF matrix calculated and frozen."
+  )
+}
+
+# Audit the weighted matrix
+
+l1_tfidf_row_norms <- sqrt(
+  Matrix::rowSums(
+    l1_tfidf_matrix ^ 2
+  )
+)
+
+l1_tfidf_audit <- tibble::tibble(
+  n_documents = nrow(l1_tfidf_matrix),
+  n_features = ncol(l1_tfidf_matrix),
+  n_nonzero = length(l1_tfidf_matrix@x),
+  min_row_norm = min(l1_tfidf_row_norms),
+  median_row_norm = stats::median(
+    l1_tfidf_row_norms
+  ),
+  max_row_norm = max(l1_tfidf_row_norms),
+  n_zero_rows = sum(
+    l1_tfidf_row_norms == 0
+  )
+)
+
+print(
+  l1_tfidf_audit,
+  n = Inf
+)
+```
+
+# MODUL 6.32 — Fit and freeze the fixed 50-dimensional SVD
+
+```{r}
+# MODUL 6.32 — Fit and freeze the fixed 50-dimensional SVD
+
+l1_svd_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_svd.rds"
+)
+
+if (file.exists(l1_svd_path)) {
+
+  l1_svd <- readRDS(
+    l1_svd_path
+  )
+
+  message(
+    "Saved 50-dimensional LSA decomposition loaded."
+  )
+
+} else {
+
+  stopifnot(
+    lsa_dimensions == 50L,
+    lsa_dimensions < min(
+      dim(l1_tfidf_matrix)
+    )
+  )
+
+  set.seed(
+    lsa_random_seed
+  )
+
+  l1_svd <- irlba::irlba(
+    l1_tfidf_matrix,
+    nv = lsa_dimensions,
+    nu = lsa_dimensions
+  )
+
+  stopifnot(
+    ncol(l1_svd$u) == 50L,
+    length(l1_svd$d) == 50L,
+    ncol(l1_svd$v) == 50L,
+    all(is.finite(l1_svd$d)),
+    all(l1_svd$d > 0)
+  )
+
+  saveRDS(
+    l1_svd,
+    l1_svd_path
+  )
+
+  message(
+    "Fixed 50-dimensional LSA decomposition fitted and frozen."
+  )
+}
+
+lsa_retained_energy <- sum(
+  l1_svd$d ^ 2
+) / sum(
+  l1_tfidf_matrix@x ^ 2
+)
+
+l1_svd_audit <- tibble::tibble(
+  n_documents = nrow(l1_svd$u),
+  n_features = nrow(l1_svd$v),
+  n_dimensions = length(l1_svd$d),
+  largest_singular_value = max(l1_svd$d),
+  smallest_retained_singular_value = min(l1_svd$d),
+  retained_matrix_energy = lsa_retained_energy
+)
+
+print(
+  l1_svd_audit,
+  n = Inf
+)
+```
+# MODUL 6.33  loads the frozen LSA reference space. It does not reconstruct these target segments.
+
+```{r}
+# MODUL 6.33 — Freeze and validate the LSA reference space
+
+lsa_reference_space_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_reference_space.rds"
+)
+
+if (file.exists(lsa_reference_space_path)) {
+
+  lsa_reference_space <- readRDS(
+    lsa_reference_space_path
+  )
+
+  message(
+    "Saved actual-LSA reference space loaded."
+  )
+
+} else {
+
+  dimension_names <- sprintf(
+    "dim_%02d",
+    seq_len(lsa_dimensions)
+  )
+
+  right_singular_vectors <- l1_svd$v
+  rownames(right_singular_vectors) <- l1_vocabulary
+  colnames(right_singular_vectors) <- dimension_names
+
+  reference_document_vectors <- l1_svd$u
+  rownames(reference_document_vectors) <- rownames(
+    l1_tfidf_matrix
+  )
+  colnames(reference_document_vectors) <- dimension_names
+
+  singular_values <- l1_svd$d
+  names(singular_values) <- dimension_names
+
+  stopifnot(
+    identical(
+      rownames(right_singular_vectors),
+      l1_vocabulary
+    ),
+    identical(
+      names(l1_idf),
+      l1_vocabulary
+    ),
+    nrow(right_singular_vectors) == 9109L,
+    ncol(right_singular_vectors) == 50L,
+    nrow(reference_document_vectors) == 2004L,
+    ncol(reference_document_vectors) == 50L,
+    all(singular_values > 0)
+  )
+
+  lsa_reference_space <- list(
+    vocabulary = l1_vocabulary,
+    document_frequency = l1_document_frequency,
+    idf = l1_idf,
+    singular_values = singular_values,
+    right_singular_vectors = right_singular_vectors,
+    reference_document_vectors = reference_document_vectors,
+
+    configuration = list(
+      dimensions = lsa_dimensions,
+      tf_weighting = "log(1 + tf)",
+      idf_weighting = "log(N / df)",
+      fold_in = "weighted_segment %*% V %*% D^-1",
+      lsa_pos_keep = lsa_pos_keep,
+      random_seed = lsa_random_seed
+    ),
+
+    audit = l1_svd_audit
+  )
+
+  saveRDS(
+    lsa_reference_space,
+    lsa_reference_space_path
+  )
+
+  message(
+    "Actual-LSA reference space frozen successfully."
+  )
+}
+
+stopifnot(
+  length(lsa_reference_space$vocabulary) == 9109L,
+  length(lsa_reference_space$idf) == 9109L,
+  length(lsa_reference_space$singular_values) == 50L,
+  all(
+    dim(
+      lsa_reference_space$right_singular_vectors
+    ) == c(9109L, 50L)
+  )
+)
+
+tibble::tibble(
+  n_documents = nrow(
+    lsa_reference_space$reference_document_vectors
+  ),
+  n_features = length(
+    lsa_reference_space$vocabulary
+  ),
+  n_dimensions = length(
+    lsa_reference_space$singular_values
+  ),
+  retained_matrix_energy =
+    lsa_reference_space$audit$retained_matrix_energy
+)
+```
+
+# MODUL 6.34 — Assemble and freeze all target and heading segments
+
+```{r}
+
+# MODUL 6.34 — Assemble and freeze all target and heading segments
+
+target_segments_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_target_segments.rds"
+)
+
+segment_bundle_version <-
+  "M6.34_heading_lemma_fix_2026-07-14_v3"
+
+# Define the selected lemma representation by stable heading ID
+
+expected_heading_lsa <- tibble::tibble(
+  heading_id = c(
+    "main_title",
+    "subheading_1",
+    "subheading_2",
+    "subheading_3"
+  ),
+  section_id = c(
+    NA_integer_,
+    1L,
+    2L,
+    3L
+  ),
+  lsa_input_text = c(
+    "digitalisierung arbeitswelt",
+    "digitalisierung sorge arbeitsplatz",
+    "fortschritt erfordern anpassung",
+    "menschlich qualität erfolgreich zukunft"
+  )
+)
+
+downstream_segment_paths <- c(
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_target_projections.rds"
+  ),
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_target_coverage.rds"
+  )
+)
+
+# Check whether the saved segment checkpoint is current
+
+load_saved_segments <- FALSE
+saved_segment_bundle <- NULL
+
+if (file.exists(target_segments_path)) {
+
+  saved_segment_bundle <- tryCatch(
+    readRDS(target_segments_path),
+    error = function(e) NULL
+  )
+
+  if (
+    is.list(saved_segment_bundle) &&
+    all(
+      c(
+        "version",
+        "body_segments",
+        "heading_segments",
+        "all_target_segments",
+        "target_segment_audit"
+      ) %in% names(saved_segment_bundle)
+    )
+  ) {
+
+    saved_heading_check <-
+      saved_segment_bundle$heading_segments |>
+      dplyr::arrange(segment_order) |>
+      dplyr::transmute(
+        heading_id = governing_heading_id,
+        section_id,
+        lsa_input_text
+      )
+
+    load_saved_segments <-
+      identical(
+        saved_segment_bundle$version,
+        segment_bundle_version
+      ) &&
+      identical(
+        saved_heading_check,
+        expected_heading_lsa
+      ) &&
+      nrow(
+        saved_segment_bundle$all_target_segments
+      ) == 129L
+  }
+}
+
+if (load_saved_segments) {
+
+  target_segment_bundle <- saved_segment_bundle
+
+  body_segments <-
+    target_segment_bundle$body_segments
+
+  heading_segments <-
+    target_segment_bundle$heading_segments
+
+  all_target_segments <-
+    target_segment_bundle$all_target_segments
+
+  target_segment_audit <-
+    target_segment_bundle$target_segment_audit
+
+  message(
+    "Current target and heading segment checkpoint loaded."
+  )
+
+} else {
+
+  # Assemble the 125 heading-free body segments
+
+  body_segments <- dplyr::bind_rows(
+
+    sentence_segment_table |>
+      dplyr::transmute(
+        text_id,
+        model,
+        segment_id,
+        segment_level = "sentence",
+        segment_order = sentence_number,
+        paragraph_number,
+        section_id,
+        governing_heading_id = subheading_id,
+        segment_text = body_token_text,
+        lsa_input_text = lsa_lemma_text,
+        n_input_terms = n_lsa_tokens
+      ),
+
+    paragraph_segment_table |>
+      dplyr::transmute(
+        text_id,
+        model,
+        segment_id,
+        segment_level = "paragraph",
+        segment_order = paragraph_number,
+        paragraph_number,
+        section_id,
+        governing_heading_id = subheading_id,
+        segment_text = body_token_text,
+        lsa_input_text = lsa_lemma_text,
+        n_input_terms = n_lsa_tokens
+      ),
+
+    whole_body_text_segment_table |>
+      dplyr::transmute(
+        text_id,
+        model,
+        segment_id,
+        segment_level = "whole_body_text",
+        segment_order = 1L,
+        paragraph_number = NA_integer_,
+        section_id = NA_integer_,
+        governing_heading_id = NA_character_,
+        segment_text = body_token_text,
+        lsa_input_text = lsa_lemma_text,
+        n_input_terms = n_lsa_tokens
+      )
+  )
+
+  # Assemble the four headings by stable heading ID
+
+  heading_segments <- shared_prompt_headings |>
+    dplyr::select(
+      heading_order,
+      heading_id,
+      heading_type,
+      heading_text
+    ) |>
+    dplyr::left_join(
+      expected_heading_lsa,
+      by = "heading_id"
+    ) |>
+    dplyr::arrange(heading_order) |>
+    dplyr::transmute(
+      text_id = "SHARED_PROMPT",
+      model = "shared_prompt",
+      segment_id = paste0(
+        "PROMPT_",
+        heading_id
+      ),
+      segment_level = dplyr::if_else(
+        heading_type == "main_title",
+        "main_title",
+        "subheading"
+      ),
+      segment_order = as.integer(
+        heading_order
+      ),
+      paragraph_number = NA_integer_,
+      section_id,
+      governing_heading_id = heading_id,
+      segment_text = heading_text,
+      lsa_input_text,
+      n_input_terms = stringr::str_count(
+        lsa_input_text,
+        "\\S+"
+      )
+    )
+
+  # Combine all 129 directly projected segments
+
+  all_target_segments <- dplyr::bind_rows(
+    body_segments,
+    heading_segments
+  )
+
+  target_segment_audit <- all_target_segments |>
+    dplyr::count(
+      segment_level,
+      name = "n_segments"
+    ) |>
+    dplyr::arrange(segment_level)
+
+  # Validate the corrected segment bundle
+
+  heading_check <- heading_segments |>
+    dplyr::transmute(
+      heading_id = governing_heading_id,
+      section_id,
+      lsa_input_text
+    )
+
+  stopifnot(
+    nrow(body_segments) == 125L,
+    nrow(heading_segments) == 4L,
+    nrow(all_target_segments) == 129L,
+    !anyDuplicated(
+      all_target_segments$segment_id
+    ),
+    !anyNA(
+      all_target_segments$lsa_input_text
+    ),
+    all(
+      all_target_segments$lsa_input_text != ""
+    ),
+    identical(
+      heading_check,
+      expected_heading_lsa
+    )
+  )
+
+  # Freeze the corrected segment bundle
+
+  target_segment_bundle <- list(
+    version = segment_bundle_version,
+    body_segments = body_segments,
+    heading_segments = heading_segments,
+    all_target_segments = all_target_segments,
+    target_segment_audit = target_segment_audit
+  )
+
+  saveRDS(
+    target_segment_bundle,
+    target_segments_path
+  )
+
+  # Remove downstream checkpoints based on older segment data
+
+  unlink(
+    downstream_segment_paths[
+      file.exists(downstream_segment_paths)
+    ]
+  )
+
+  message(
+    paste0(
+      "Corrected target and heading segments frozen; ",
+      "dependent projection and coverage checkpoints removed."
+    )
+  )
+}
+
+print(
+  target_segment_audit,
+  n = Inf
+)
+
+print(
+  heading_segments |>
+    dplyr::select(
+      segment_level,
+      segment_order,
+      governing_heading_id,
+      segment_text,
+      lsa_input_text,
+      n_input_terms
+    ),
+  n = Inf,
+  width = Inf
+)
+        
+```
+
+```{r}
+heading_segments |>
+  dplyr::select(
+    governing_heading_id,
+    lsa_input_text,
+    n_input_terms
+  )
+```
+#
+
+```{r}
+shared_prompt_headings |>
+  dplyr::select(
+    heading_order,
+    heading_id,
+    heading_type,
+    heading_text
+  ) |>
+  print(n = Inf, width = Inf)
+```
+# ODUL 6.35 — Fold target segments into the fixed LSA space - uses the frozen 129 segments, the frozen vocabulary, IDF, right-singular vectors, and singular values. It does not refit the LSA space.
+
+```{r}
+
+# MODUL 6.35 — Fold target segments into the fixed LSA space
+# MODUL 6.35 — Fold target segments into the fixed LSA space
+
+target_projection_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_target_projections.rds"
+)
+
+if (file.exists(target_projection_path)) {
+
+  target_projection_bundle <- readRDS(
+    target_projection_path
+  )
+
+  target_dfm_full <-
+    target_projection_bundle$target_dfm_full
+
+  target_dfm <-
+    target_projection_bundle$target_dfm
+
+  target_tfidf_matrix <-
+    target_projection_bundle$target_tfidf_matrix
+
+  target_segment_vectors_raw <-
+    target_projection_bundle$segment_vectors_raw
+
+  target_segment_vectors <-
+    target_projection_bundle$segment_vectors
+
+  target_vector_norms <-
+    target_projection_bundle$vector_norms
+
+  target_vector_valid <-
+    target_projection_bundle$valid_vector
+
+  message(
+    "Saved target-segment projections loaded."
+  )
+
+} else {
+
+  # Build one DFM for all frozen target and heading segments
+
+  target_tokens <- quanteda::tokens(
+    stats::setNames(
+      all_target_segments$lsa_input_text,
+      all_target_segments$segment_id
+    ),
+    remove_punct = TRUE,
+    remove_symbols = TRUE
+  )
+
+  target_dfm_full <- quanteda::dfm(
+    target_tokens,
+    tolower = FALSE
+  )
+
+  # Match the target DFM to the frozen L1 vocabulary
+
+  target_dfm <- quanteda::dfm_match(
+    target_dfm_full,
+    features = lsa_reference_space$vocabulary
+  )
+
+  target_count_matrix <- methods::as(
+    target_dfm,
+    "dgCMatrix"
+  )
+
+  stopifnot(
+    identical(
+      colnames(target_count_matrix),
+      lsa_reference_space$vocabulary
+    ),
+    identical(
+      names(lsa_reference_space$idf),
+      lsa_reference_space$vocabulary
+    ),
+    nrow(target_count_matrix) == 129L
+  )
+
+  # Apply the frozen log-TF weighting
+
+  target_log_tf_matrix <- target_count_matrix
+
+  target_log_tf_matrix@x <- log1p(
+    target_log_tf_matrix@x
+  )
+
+  # Apply the frozen L1-derived IDF weights
+
+  target_tfidf_matrix <-
+    target_log_tf_matrix %*%
+    Matrix::Diagonal(
+      x = as.numeric(
+        lsa_reference_space$idf
+      )
+    )
+
+  # Construct the fixed fold-in basis
+
+  fold_in_basis <-
+    lsa_reference_space$right_singular_vectors %*%
+    Matrix::Diagonal(
+      x = 1 /
+        lsa_reference_space$singular_values
+    )
+
+  # Fold all segments into the fixed 50-dimensional space
+
+  target_segment_vectors_raw <- as.matrix(
+    target_tfidf_matrix %*%
+      fold_in_basis
+  )
+
+  rownames(target_segment_vectors_raw) <-
+    all_target_segments$segment_id
+
+  colnames(target_segment_vectors_raw) <-
+    colnames(
+      lsa_reference_space$right_singular_vectors
+    )
+
+  # Calculate vector norms and identify valid vectors
+
+  target_vector_norms <- sqrt(
+    rowSums(
+      target_segment_vectors_raw ^ 2
+    )
+  )
+
+  vector_tolerance <- sqrt(
+    .Machine$double.eps
+  )
+
+  target_vector_valid <-
+    is.finite(target_vector_norms) &
+    target_vector_norms > vector_tolerance
+
+  stopifnot(
+    any(target_vector_valid)
+  )
+
+  # L2-normalize valid projected vectors
+
+  target_segment_vectors <- matrix(
+    NA_real_,
+    nrow = nrow(target_segment_vectors_raw),
+    ncol = ncol(target_segment_vectors_raw),
+    dimnames = dimnames(
+      target_segment_vectors_raw
+    )
+  )
+
+  target_segment_vectors[
+    target_vector_valid,
+  ] <- sweep(
+    target_segment_vectors_raw[
+      target_vector_valid,
+      ,
+      drop = FALSE
+    ],
+    MARGIN = 1,
+    STATS = target_vector_norms[
+      target_vector_valid
+    ],
+    FUN = "/"
+  )
+
+  # Validate the projected space
+
+  stopifnot(
+    nrow(target_segment_vectors) == 129L,
+    ncol(target_segment_vectors) == 50L,
+    all(
+      is.finite(
+        target_segment_vectors[
+          target_vector_valid,
+          ,
+          drop = FALSE
+        ]
+      )
+    ),
+    all(
+      abs(
+        sqrt(
+          rowSums(
+            target_segment_vectors[
+              target_vector_valid,
+              ,
+              drop = FALSE
+            ] ^ 2
+          )
+        ) - 1
+      ) < 1e-8
+    )
+  )
+
+  # Freeze the complete projection bundle
+
+  target_projection_bundle <- list(
+    segment_metadata = all_target_segments,
+    target_dfm_full = target_dfm_full,
+    target_dfm = target_dfm,
+    target_tfidf_matrix = target_tfidf_matrix,
+    segment_vectors_raw = target_segment_vectors_raw,
+    segment_vectors = target_segment_vectors,
+    vector_norms = target_vector_norms,
+    valid_vector = target_vector_valid
+  )
+
+  saveRDS(
+    target_projection_bundle,
+    target_projection_path
+  )
+
+  message(
+    paste0(
+      "Target segments folded into the fixed actual-LSA ",
+      "space and frozen."
+    )
+  )
+}
+
+# Summarize the projection result
+
+target_projection_audit <- tibble::tibble(
+  n_segments = nrow(
+    target_segment_vectors
+  ),
+  n_dimensions = ncol(
+    target_segment_vectors
+  ),
+  n_valid_vectors = sum(
+    target_vector_valid
+  ),
+  n_invalid_vectors = sum(
+    !target_vector_valid
+  )
+)
+
+print(
+  target_projection_audit,
+  n = Inf
+)
+
+```
+#  MODUL 6.36 — Audit vocabulary coverage and vector validity
+
+```{r}
+
+# MODUL 6.36 — Audit vocabulary coverage and vector validity
+
+target_coverage_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_target_coverage.rds"
+)
+
+if (file.exists(target_coverage_path)) {
+
+  target_coverage_bundle <- readRDS(
+    target_coverage_path
+  )
+
+  target_segment_audit <-
+    target_coverage_bundle$segment_audit
+
+  target_coverage_summary <-
+    target_coverage_bundle$coverage_summary
+
+  message(
+    "Saved target vocabulary-coverage audit loaded."
+  )
+
+} else {
+
+  # Calculate token and type counts before and after vocabulary matching
+
+  n_input_lemmas <- as.numeric(
+    Matrix::rowSums(target_dfm_full)
+  )
+
+  n_in_vocabulary <- as.numeric(
+    Matrix::rowSums(target_dfm)
+  )
+
+  n_input_types <- as.numeric(
+    Matrix::rowSums(target_dfm_full > 0)
+  )
+
+  n_in_vocabulary_types <- as.numeric(
+    Matrix::rowSums(target_dfm > 0)
+  )
+
+  # Assemble the complete segment-level audit
+
+  target_segment_audit <- all_target_segments |>
+    dplyr::mutate(
+      n_input_lemmas = n_input_lemmas,
+      n_in_vocabulary = n_in_vocabulary,
+      n_oov = n_input_lemmas - n_in_vocabulary,
+      token_coverage = dplyr::if_else(
+        n_input_lemmas > 0,
+        n_in_vocabulary / n_input_lemmas,
+        NA_real_
+      ),
+      n_input_types = n_input_types,
+      n_in_vocabulary_types = n_in_vocabulary_types,
+      type_coverage = dplyr::if_else(
+        n_input_types > 0,
+        n_in_vocabulary_types / n_input_types,
+        NA_real_
+      ),
+      vector_norm = target_vector_norms,
+      valid_vector = target_vector_valid
+    )
+
+  # Create a compact audit by segment level
+
+  target_coverage_summary <- target_segment_audit |>
+    dplyr::group_by(segment_level) |>
+    dplyr::summarise(
+      n_segments = dplyr::n(),
+      lsa_coverage_mean = mean(
+        token_coverage,
+        na.rm = TRUE
+      ),
+      lsa_coverage_min = min(
+        token_coverage,
+        na.rm = TRUE
+      ),
+      n_invalid_segments = sum(
+        !valid_vector
+      ),
+      .groups = "drop"
+    )
+
+  stopifnot(
+    nrow(target_segment_audit) == 129L,
+    all(target_segment_audit$n_oov >= 0),
+    all(
+      target_segment_audit$token_coverage >= 0 &
+        target_segment_audit$token_coverage <= 1
+    ),
+    all(
+      target_segment_audit$type_coverage >= 0 &
+        target_segment_audit$type_coverage <= 1
+    ),
+    sum(!target_segment_audit$valid_vector) == 0L
+  )
+
+  target_coverage_bundle <- list(
+    segment_audit = target_segment_audit,
+    coverage_summary = target_coverage_summary
+  )
+
+  saveRDS(
+    target_coverage_bundle,
+    target_coverage_path
+  )
+
+  message(
+    "Target vocabulary coverage and vector validity audited and frozen."
+  )
+}
+
+print(
+  target_coverage_summary,
+  n = Inf
+)
+```
+
+```{r}
+# MODUL 6.37 — Calculate and freeze the x3 similarities
+
+x3_output_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3.rds"
+)
+
+if (file.exists(x3_output_path)) {
+
+  x3_bundle <- readRDS(x3_output_path)
+
+  x3_sentence_pairs <- x3_bundle$sentence_pairs
+  x3_paragraph_pairs <- x3_bundle$paragraph_pairs
+  x3_profiles <- x3_bundle$profiles
+
+  message("Saved x3 similarities loaded.")
+
+} else {
+
+  # Calculate cosine similarity from the normalized segment vectors
+
+  segment_cosine <- function(segment_id_1, segment_id_2) {
+
+    vector_1 <- target_segment_vectors[
+      segment_id_1,
+      ,
+      drop = TRUE
+    ]
+
+    vector_2 <- target_segment_vectors[
+      segment_id_2,
+      ,
+      drop = TRUE
+    ]
+
+    if (
+      anyNA(vector_1) ||
+      anyNA(vector_2)
+    ) {
+      return(NA_real_)
+    }
+
+    sum(vector_1 * vector_2)
+  }
+
+  # Calculate adjacent-sentence similarities
+
+  x3_sentence_pairs <- all_target_segments |>
+    dplyr::filter(
+      segment_level == "sentence"
+    ) |>
+    dplyr::arrange(
+      text_id,
+      segment_order
+    ) |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::mutate(
+      next_segment_id = dplyr::lead(segment_id),
+      next_segment_order = dplyr::lead(segment_order)
+    ) |>
+    dplyr::filter(
+      !is.na(next_segment_id)
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      cosine_similarity = purrr::map2_dbl(
+        segment_id,
+        next_segment_id,
+        segment_cosine
+      )
+    ) |>
+    dplyr::select(
+      text_id,
+      model,
+      segment_id_1 = segment_id,
+      segment_id_2 = next_segment_id,
+      sentence_order_1 = segment_order,
+      sentence_order_2 = next_segment_order,
+      cosine_similarity
+    )
+
+  # Calculate adjacent-paragraph similarities
+
+  x3_paragraph_pairs <- all_target_segments |>
+    dplyr::filter(
+      segment_level == "paragraph"
+    ) |>
+    dplyr::arrange(
+      text_id,
+      segment_order
+    ) |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::mutate(
+      next_segment_id = dplyr::lead(segment_id),
+      next_segment_order = dplyr::lead(segment_order)
+    ) |>
+    dplyr::filter(
+      !is.na(next_segment_id)
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      cosine_similarity = purrr::map2_dbl(
+        segment_id,
+        next_segment_id,
+        segment_cosine
+      )
+    ) |>
+    dplyr::select(
+      text_id,
+      model,
+      segment_id_1 = segment_id,
+      segment_id_2 = next_segment_id,
+      paragraph_order_1 = segment_order,
+      paragraph_order_2 = next_segment_order,
+      cosine_similarity
+    )
+
+  # Assemble the text-level x3 profile
+
+  x3_sentence_summary <- x3_sentence_pairs |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::summarise(
+      x3_adjacent_sentence_similarity_mean = mean(
+        cosine_similarity,
+        na.rm = TRUE
+      ),
+      x3_adjacent_sentence_similarity_sd = stats::sd(
+        cosine_similarity,
+        na.rm = TRUE
+      ),
+      n_adjacent_sentence_pairs = dplyr::n(),
+      .groups = "drop"
+    )
+
+  x3_paragraph_summary <- x3_paragraph_pairs |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::summarise(
+      x3_adjacent_paragraph_similarity_mean = mean(
+        cosine_similarity,
+        na.rm = TRUE
+      ),
+      n_adjacent_paragraph_pairs = dplyr::n(),
+      .groups = "drop"
+    )
+
+  x3_profiles <- x3_sentence_summary |>
+    dplyr::left_join(
+      x3_paragraph_summary,
+      by = c(
+        "text_id",
+        "model"
+      )
+    )
+
+  stopifnot(
+    nrow(x3_profiles) == 4L,
+    all(
+      is.finite(
+        x3_profiles$x3_adjacent_sentence_similarity_mean
+      )
+    ),
+    all(
+      is.finite(
+        x3_profiles$x3_adjacent_paragraph_similarity_mean
+      )
+    ),
+    all(
+      x3_sentence_pairs$cosine_similarity >= -1 &
+        x3_sentence_pairs$cosine_similarity <= 1
+    ),
+    all(
+      x3_paragraph_pairs$cosine_similarity >= -1 &
+        x3_paragraph_pairs$cosine_similarity <= 1
+    )
+  )
+
+  x3_bundle <- list(
+    sentence_pairs = x3_sentence_pairs,
+    paragraph_pairs = x3_paragraph_pairs,
+    profiles = x3_profiles
+  )
+
+  saveRDS(
+    x3_bundle,
+    x3_output_path
+  )
+
+  message("x3 similarities calculated and frozen.")
+}
+
+print(
+  x3_profiles,
+  n = Inf,
+  width = Inf
+)
+```
+# Calculates the within-text gradient - 
+
+```{r}
+# Calculate within-text semantic-continuity gradients
+
+x3_sentence_gradient <- x3_sentence_pairs |>
+  dplyr::group_by(
+    text_id,
+    model
+  ) |>
+  dplyr::arrange(
+    sentence_order_1,
+    .by_group = TRUE
+  ) |>
+  dplyr::mutate(
+    normalized_text_position =
+      (dplyr::row_number() - 1) /
+      pmax(dplyr::n() - 1, 1)
+  ) |>
+  dplyr::summarise(
+    x3_adjacent_sentence_similarity_gradient =
+      if (dplyr::n() > 1L) {
+        unname(
+          stats::coef(
+            stats::lm(
+              cosine_similarity ~ normalized_text_position
+            )
+          )[["normalized_text_position"]]
+        )
+      } else {
+        NA_real_
+      },
+
+    x3_adjacent_sentence_similarity_first_third =
+      mean(
+        cosine_similarity[
+          normalized_text_position <= 1 / 3
+        ],
+        na.rm = TRUE
+      ),
+
+    x3_adjacent_sentence_similarity_final_third =
+      mean(
+        cosine_similarity[
+          normalized_text_position >= 2 / 3
+        ],
+        na.rm = TRUE
+      ),
+
+    x3_adjacent_sentence_similarity_retention =
+      x3_adjacent_sentence_similarity_final_third -
+      x3_adjacent_sentence_similarity_first_third,
+
+    .groups = "drop"
+  )
+
+print(
+  x3_sentence_gradient,
+  n = Inf,
+  width = Inf
+)
+```
+#
+
+```{r}
+# MODUL 6.37a — Calculate and freeze x3 sentence-gradient diagnostics
+
+x3_gradient_diagnostics <- x3_sentence_pairs |>
+  dplyr::group_by(text_id, model) |>
+  dplyr::mutate(normalized_position = (dplyr::row_number() - 1) / (dplyr::n() - 1)) |>
+  dplyr::group_modify(~ {
+    fit <- stats::lm(cosine_similarity ~ normalized_position, data = .x)
+    thirds <- cut(.x$normalized_position, c(-Inf, 1/3, 2/3, Inf), labels = c("first", "middle", "final"))
+    means <- tapply(.x$cosine_similarity, thirds, mean)
+    tibble::tibble(
+      x3_adjacent_sentence_similarity_gradient = unname(stats::coef(fit)[2]),
+      x3_adjacent_sentence_gradient_se = summary(fit)$coefficients[2, 2],
+      x3_adjacent_sentence_gradient_r2 = summary(fit)$r.squared,
+      x3_adjacent_sentence_similarity_first_third = unname(means["first"]),
+      x3_adjacent_sentence_similarity_middle_third = unname(means["middle"]),
+      x3_adjacent_sentence_similarity_final_third = unname(means["final"]),
+      x3_adjacent_sentence_similarity_retention = unname(means["final"] - means["first"])
+    )
+  }) |>
+  dplyr::ungroup()
+
+x3_profiles_extended <- x3_profiles |>
+  dplyr::left_join(x3_gradient_diagnostics, by = c("text_id", "model"))
+
+saveRDS(list(profiles = x3_profiles_extended, diagnostics = x3_gradient_diagnostics),
+        file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3_gradient.rds"))
+
+print(x3_profiles_extended, n = Inf, width = Inf)
+print(x3_gradient_diagnostics, n = Inf, width = Inf)
+View(x3_gradient_diagnostics)
+
+readr::write_csv(x3_gradient_diagnostics,
+                 file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3_gradient_diagnostics.csv"))
+```
+
+#
+
+```{r}
+print(x3_profiles_extended, n = Inf, width = Inf)
+View(x3_profiles_extended)
+
+readr::write_csv(x3_profiles_extended,
+                 file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3_profiles_extended.csv"))
+```
+
+
+# Plot save: modul_6_x3_sentence_gradient
+
+```{r}
+# MODUL 6.37b — Plot x3 sentence-gradient diagnostics
+
+x3_plot_data <- x3_sentence_pairs |>
+  dplyr::group_by(text_id, model) |> dplyr::mutate(normalized_position = (dplyr::row_number() - 1) / (dplyr::n() - 1)) |> dplyr::ungroup()
+
+x3_plot_labels <- x3_gradient_diagnostics |>
+  dplyr::mutate(label = sprintf("Slope = %.3f\nSE = %.3f | R² = %.3f\nFirst = %.3f | Middle = %.3f | Final = %.3f\nRetention = %.3f",
+                                x3_adjacent_sentence_similarity_gradient, x3_adjacent_sentence_gradient_se,
+                                x3_adjacent_sentence_gradient_r2, x3_adjacent_sentence_similarity_first_third,
+                                x3_adjacent_sentence_similarity_middle_third, x3_adjacent_sentence_similarity_final_third,
+                                x3_adjacent_sentence_similarity_retention))
+
+modul_6_x3_sentence_gradient_diagnostics <- ggplot2::ggplot(x3_plot_data, ggplot2::aes(normalized_position, cosine_similarity)) +
+  ggplot2::geom_point(size = 0.5) + ggplot2::geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.4) +
+  ggplot2::geom_text(data = x3_plot_labels, ggplot2::aes(x = 0, y = Inf, label = label), hjust = 0, vjust = 1.1, size = 2.5, inherit.aes = FALSE) +
+  ggplot2::facet_wrap(~ model) + ggplot2::labs(title = "MODUL 6 x3 Sentence-Gradient Diagnostics", x = "Normalized sentence-pair position", y = "Adjacent-sentence similarity")
+
+modul_6_x3_sentence_gradient_diagnostics
+ggplot2::ggsave(file.path(actual_lsa_output_dir, "modul_6_x3_sentence_gradient_diagnostics.png"), modul_6_x3_sentence_gradient_diagnostics, width = 10, height = 7, dpi = 300)
+```
+
+```{r}
+# MODUL 6.37d — Human-referenced x3 trajectory comparison
+
+human_level <- grep("human", unique(x3_plot_data$model), ignore.case = TRUE, value = TRUE)[1]
+stopifnot(!is.na(human_level))
+x3_plot_data$model <- stats::relevel(factor(x3_plot_data$model), ref = human_level)
+x3_human_model <- stats::lm(cosine_similarity ~ normalized_position * model, data = x3_plot_data)
+
+x3_human_predictions <- tidyr::expand_grid(normalized_position = seq(0, 1, length.out = 101),
+                                           model = levels(x3_plot_data$model))
+x3_human_predictions$predicted_similarity <- predict(x3_human_model, newdata = x3_human_predictions)
+
+x3_human_predictions <- x3_human_predictions |>
+  dplyr::group_by(normalized_position) |>
+  dplyr::mutate(human_prediction = predicted_similarity[as.character(model) == human_level],
+                human_difference = predicted_similarity - human_prediction) |>
+  dplyr::ungroup()
+
+x3_human_trajectory_summary <- x3_human_predictions |>
+  dplyr::filter(as.character(model) != human_level) |>
+  dplyr::group_by(model) |>
+  dplyr::summarise(x3_human_curve_distance_mean = mean(abs(human_difference)),
+                   difference_beginning = dplyr::first(human_difference),
+                   difference_middle = human_difference[normalized_position == 0.5],
+                   difference_end = dplyr::last(human_difference), .groups = "drop")
+
+model_labels <- c(chatgpt_native = "ChatGPT", claude_native = "Claude",
+                  gemini_native = "Gemini", human = "Human")
+
+modul_6_x3_human_reference <- ggplot2::ggplot(x3_human_predictions, ggplot2::aes(normalized_position, predicted_similarity, color = model)) +
+  ggplot2::geom_line(linewidth = 0.5) +
+  ggplot2::scale_color_discrete(name = "Model", labels = model_labels) +
+  ggplot2::labs(title = "Human-Referenced x3 Trajectories", x = "Normalized sentence-pair position", y = "Predicted adjacent-sentence similarity")
+
+saveRDS(list(human_reference = human_level, model = x3_human_model, predictions = x3_human_predictions,
+             summary = x3_human_trajectory_summary),
+        file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3_human_reference.rds"))
+ggplot2::ggsave(file.path(actual_lsa_output_dir, "modul_6_x3_human_reference.png"),
+                modul_6_x3_human_reference, width = 10, height = 7, dpi = 300)
+
+print(x3_human_trajectory_summary, n = Inf)
+modul_6_x3_human_reference
+```
+# Note: This cell fits a joint regression model of adjacent-sentence similarity over normalized text position, using the Human baseline as the reference category. It predicts the Human and LM trajectories on a common 0–1 scale and calculates each LM’s difference from Human at the beginning, middle, and end, as well as the mean absolute curve distance. The fitted trajectories, Human-relative summary, regression model, and combined comparison plot are saved for diagnostic analysis.
+
+
+# MODUL 6.37e — Build and project connector-only x3 segments
+
+```{r}
+
+# MODUL 6.37e — Build and project connector-only x3 segments
+
+x3co_source <- readRDS(file.path(project_root, "data_prep_CCP_output", "current_texts_parsed.rds")) |>
+  dplyr::mutate(pos_clean = stringr::str_to_upper(stringr::str_trim(as.character(pos))))
+
+x3co_sentence_map <- sentence_segment_table |>
+  dplyr::transmute(text_id = as.character(text_id), sentence_id = as.integer(sentence_id),
+                   paragraph_id = as.character(paragraph_id), model) |>
+  dplyr::distinct()
+
+stopifnot(!anyDuplicated(x3co_sentence_map[c("text_id", "sentence_id")]))
+
+x3co_tokens <- x3co_source |>
+  dplyr::filter(pos_clean %in% c("CCONJ", "SCONJ"), !is.na(lemma), stringr::str_trim(lemma) != "") |>
+  dplyr::transmute(text_id = as.character(text_id), sentence_id = as.integer(sentence_id),
+                   lemma = stringr::str_to_lower(stringr::str_trim(lemma)), pos_clean) |>
+  dplyr::inner_join(x3co_sentence_map, by = c("text_id", "sentence_id"))
+
+stopifnot(nrow(x3co_tokens) > 0L, !anyNA(x3co_tokens$paragraph_id))
+print(dplyr::count(x3co_tokens, pos_clean, sort = TRUE), n = Inf)
+
+x3co_sentence_segments <- x3co_sentence_map |>
+  dplyr::arrange(text_id, sentence_id) |> dplyr::group_by(text_id) |>
+  dplyr::mutate(segment_order = dplyr::row_number()) |> dplyr::ungroup() |>
+  dplyr::left_join(x3co_tokens |> dplyr::group_by(text_id, sentence_id) |>
+                     dplyr::summarise(terms = paste(lemma, collapse = " "), n_connectors = dplyr::n(), .groups = "drop"),
+                   by = c("text_id", "sentence_id")) |>
+  dplyr::mutate(segment_id = paste0("x3co_s_", dplyr::row_number()),
+                terms = tidyr::replace_na(terms, ""), n_connectors = tidyr::replace_na(n_connectors, 0L))
+
+x3co_paragraph_segments <- paragraph_segment_table |>
+  dplyr::transmute(text_id = as.character(text_id), paragraph_id = as.character(paragraph_id), model) |>
+  dplyr::distinct() |> dplyr::arrange(text_id, paragraph_id) |> dplyr::group_by(text_id) |>
+  dplyr::mutate(segment_order = dplyr::row_number()) |> dplyr::ungroup() |>
+  dplyr::left_join(x3co_tokens |> dplyr::group_by(text_id, paragraph_id) |>
+                     dplyr::summarise(terms = paste(lemma, collapse = " "), n_connectors = dplyr::n(), .groups = "drop"),
+                   by = c("text_id", "paragraph_id")) |>
+  dplyr::mutate(segment_id = paste0("x3co_p_", dplyr::row_number()),
+                terms = tidyr::replace_na(terms, ""), n_connectors = tidyr::replace_na(n_connectors, 0L))
+
+project_x3co <- function(x) {
+  m <- quanteda::dfm_match(quanteda::dfm(quanteda::tokens(x$terms)), features = lsa_reference_space$vocabulary)
+  m <- methods::as(m, "dgCMatrix"); m@x <- log1p(m@x)
+  m <- m %*% Matrix::Diagonal(x = lsa_reference_space$idf)
+  v <- as.matrix(m %*% (lsa_reference_space$right_singular_vectors %*%
+                          diag(1 / lsa_reference_space$singular_values)))
+  norms <- sqrt(rowSums(v^2)); v <- sweep(v, 1, norms, "/"); v[!is.finite(v)] <- NA_real_
+  rownames(v) <- x$segment_id
+  list(vectors = v, valid = is.finite(norms) & norms > 0)
+}
+
+x3co_sentence_projection <- project_x3co(x3co_sentence_segments)
+x3co_paragraph_projection <- project_x3co(x3co_paragraph_segments)
+
+saveRDS(list(sentence_segments = x3co_sentence_segments, paragraph_segments = x3co_paragraph_segments,
+             sentence_projection = x3co_sentence_projection, paragraph_projection = x3co_paragraph_projection),
+        file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3co_segments.rds"))
+
+dplyr::bind_rows(
+  x3co_sentence_segments |> dplyr::summarise(level = "sentence", segments = dplyr::n(),
+                                              with_connectors = sum(n_connectors > 0), connectors = sum(n_connectors)),
+  x3co_paragraph_segments |> dplyr::summarise(level = "paragraph", segments = dplyr::n(),
+                                               with_connectors = sum(n_connectors > 0), connectors = sum(n_connectors))
+)
+```
+
+# 
+
+```{r}
+# MODUL 6.37g — Calculate and freeze text-internal connector continuity
+
+x3cc_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3co_connector_continuity.rds"
+)
+
+if (file.exists(x3cc_path)) {
+
+  x3cc_bundle <- readRDS(x3cc_path)
+  x3cc_sentence_segments <- x3cc_bundle$sentence_segments
+  x3cc_projection <- x3cc_bundle$projection
+  x3cc_continuity <- x3cc_bundle$continuity
+  x3cc_summary <- x3cc_bundle$summary
+
+  message("Saved connector continuity loaded.")
+
+} else {
+
+  x3cc_sentence_segments <- x3co_sentence_segments |>
+    dplyr::select(
+      text_id, model, paragraph_id,
+      sentence_id, segment_order
+    ) |>
+    dplyr::distinct() |>
+    tidyr::crossing(
+      connector_type = c("CCONJ", "SCONJ")
+    ) |>
+    dplyr::left_join(
+      x3co_tokens |>
+        dplyr::group_by(
+          text_id, model, sentence_id,
+          connector_type = pos_clean
+        ) |>
+        dplyr::summarise(
+          terms = paste(lemma, collapse = " "),
+          n_connectors = dplyr::n(),
+          .groups = "drop"
+        ),
+      by = c(
+        "text_id", "model",
+        "sentence_id", "connector_type"
+      )
+    ) |>
+    dplyr::mutate(
+      terms = tidyr::replace_na(terms, ""),
+      n_connectors = tidyr::replace_na(n_connectors, 0L),
+      segment_id = paste(
+        text_id, sentence_id, connector_type,
+        sep = "_"
+      )
+    )
+
+  x3cc_projection <- project_x3co(
+    x3cc_sentence_segments
+  )
+
+  x3cc_sentence_segments$valid_vector <-
+    x3cc_projection$valid
+
+  x3cc_cosine <- function(a, b) {
+
+    vectors <- x3cc_projection$vectors
+    pair <- vectors[c(a, b), , drop = FALSE]
+
+    if (any(!is.finite(pair))) {
+      return(NA_real_)
+    }
+
+    sum(pair[1, ] * pair[2, ])
+  }
+
+  x3cc_continuity <- x3cc_sentence_segments |>
+    dplyr::arrange(
+      text_id, connector_type, segment_order
+    ) |>
+    dplyr::group_by(
+      text_id, model, connector_type
+    ) |>
+    dplyr::mutate(
+      next_sentence_id = dplyr::lead(sentence_id),
+      next_segment_id = dplyr::lead(segment_id)
+    ) |>
+    dplyr::filter(
+      !is.na(next_segment_id)
+    ) |>
+    dplyr::mutate(
+      normalized_position =
+        (dplyr::row_number() - 1) /
+        pmax(dplyr::n() - 1, 1),
+      transition_id = paste(
+        text_id, sentence_id,
+        next_sentence_id, connector_type,
+        sep = "_"
+      )
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      cc_score = purrr::map2_dbl(
+        segment_id,
+        next_segment_id,
+        x3cc_cosine
+      )
+    )
+
+  x3cc_summary <- x3cc_continuity |>
+    dplyr::group_by(
+      text_id, model, connector_type
+    ) |>
+    dplyr::summarise(
+      n_pairs = dplyr::n(),
+      n_valid_pairs = sum(is.finite(cc_score)),
+      x3co_similarity_mean =
+        if (n_valid_pairs > 0L) {
+          mean(cc_score[is.finite(cc_score)])
+        } else {
+          NA_real_
+        },
+      x3co_similarity_sd =
+        if (n_valid_pairs > 1L) {
+          stats::sd(cc_score[is.finite(cc_score)])
+        } else {
+          NA_real_
+        },
+      pair_coverage = n_valid_pairs / n_pairs,
+      .groups = "drop"
+    )
+
+  x3cc_bundle <- list(
+    sentence_segments = x3cc_sentence_segments,
+    projection = x3cc_projection,
+    continuity = x3cc_continuity,
+    summary = x3cc_summary,
+    plot_data = x3cc_continuity
+  )
+
+  saveRDS(
+    x3cc_bundle,
+    x3cc_path
+  )
+
+  readr::write_csv(
+    x3cc_continuity,
+    file.path(
+      actual_lsa_output_dir,
+      "modul_6_actual_lsa_x3co_connector_pairs.csv"
+    )
+  )
+
+  readr::write_csv(
+    x3cc_summary,
+    file.path(
+      actual_lsa_output_dir,
+      "modul_6_actual_lsa_x3co_connector_summary.csv"
+    )
+  )
+
+  message("Connector continuity calculated and frozen.")
+}
+
+stopifnot(
+  all(
+    c("CCONJ", "SCONJ") %in%
+      unique(x3cc_continuity$connector_type)
+  )
+)
+
+print(
+  x3cc_summary,
+  n = Inf,
+  width = Inf
+)
+```
+
+# # MODUL 6.37h — Plot Human-centered connector-transition similarity
+
+```{r}
+
+# MODUL 6.37h — Plot Human-centered connector continuity
+
+# Load frozen results
+
+x3cc_path <- file.path(
+  project_root,
+  "measure_outputs",
+  "modul_6_actual_lsa_connector_continuity_human_centered.rds"
+)
+
+stopifnot(file.exists(x3cc_path))
+x3cc_frozen <- readRDS(x3cc_path)
+
+# Prepare plot data
+
+x3cc_plot <- x3cc_frozen$human_centered |>
+  dplyr::mutate(
+    model = dplyr::recode(
+      as.character(model),
+      chatgpt_native = "ChatGPT",
+      claude_native = "Claude",
+      gemini_native = "Gemini"
+    )
+  ) |>
+  dplyr::select(
+    model, connector_type, normalized_position,
+    LM = cc_score, Human = human_score
+  ) |>
+  tidyr::pivot_longer(
+    c(LM, Human),
+    names_to = "source",
+    values_to = "connector_continuity"
+  )
+
+# Build plot
+
+modul_6_connector_continuity <- ggplot2::ggplot(
+  x3cc_plot,
+  ggplot2::aes(
+    normalized_position,
+    connector_continuity,
+    color = source,
+    group = source
+  )
+) +
+  ggplot2::geom_hline(yintercept = 0, linetype = "dashed", linewidth = 0.3) +
+  ggplot2::geom_line(linewidth = 0.5) +
+  ggplot2::geom_point(size = 1.2) +
+  ggplot2::facet_grid(connector_type ~ model) +
+  ggplot2::coord_cartesian(ylim = c(-1, 1)) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(
+    legend.position = "bottom",
+    panel.grid.minor = ggplot2::element_blank()
+  ) +
+  ggplot2::labs(
+    title = "Connector Continuity: Human versus Language Models",
+    x = "Normalized sentence-transition position",
+    y = "Adjacent-sentence connector cosine",
+    color = NULL
+  )
+
+# Freeze and export plot
+
+saveRDS(
+  list(data = x3cc_plot, plot = modul_6_connector_continuity),
+  file.path(
+    project_root,
+    "measure_outputs",
+    "modul_6_connector_continuity_plot.rds"
+  )
+)
+
+ggplot2::ggsave(
+  file.path(
+    project_root,
+    "measure_outputs",
+    "modul_6_connector_continuity.png"
+  ),
+  modul_6_connector_continuity,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+
+# Display plot
+
+modul_6_connector_continuity
+```
+# Note: Decoupling of Semantics and Propositional Structure  (NEEDS REVISION)
+
+The indices’ x3co plotting (Plot x) suggested that, within a very similar topic and semantic space, the logico‑semantic structure of the discourse is organised relatively differently. As realised through the patterning of connectors, this appears as a connector‑only latent structural skeleton versus a “content mass”.
+
+If content‑word similarity shows monotonic decay (e.g., thematic shifts as sentences progress), but connector continuity does not, it means that the logical architecture of the text is decoupled from the topical progression we can observe within the human baseline. So even when the human writer and the models are writing or providing output about basically the same thing, the way they thread that content with coordinating and subordinating relations is not coupled to the semantic content in the same way as in the human texts.
+
+# MODUL 6.38 -  Build and project x3cw paragraph
+
+```{r}
+
+# MODUL 6.38 — Build and project x3cw paragraphs
+
+# Define output path
+
+x3cw_segments_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3cw_segments.rds"
+)
+
+# Load frozen output when available
+
+if (file.exists(x3cw_segments_path)) {
+
+  x3cw_segments_bundle <- readRDS(
+    x3cw_segments_path
+  )
+
+  x3cw_paragraph_segments <-
+    x3cw_segments_bundle$paragraph_segments
+
+  x3cw_projection <-
+    x3cw_segments_bundle$projection
+
+  message("Saved x3cw paragraph segments loaded.")
+
+} else {
+
+  # Build the validated sentence-to-paragraph map
+
+  x3cw_sentence_map <- sentence_segment_table |>
+    dplyr::transmute(
+      text_id = as.character(text_id),
+      sentence_id = as.integer(sentence_id),
+      paragraph_id = as.character(paragraph_id),
+      paragraph_number = as.integer(paragraph_number),
+      model
+    ) |>
+    dplyr::distinct()
+
+  # Prepare content-word tokens
+
+  x3cw_tokens <- readRDS(
+    file.path(
+      project_root,
+      "data_prep_CCP_output",
+      "current_texts_parsed.rds"
+    )
+  ) |>
+    dplyr::rename(
+      parsed_paragraph_id = paragraph_id
+    ) |>
+    dplyr::mutate(
+      text_id = as.character(text_id),
+      sentence_id = as.integer(sentence_id),
+      pos_clean = stringr::str_to_upper(
+        stringr::str_trim(
+          as.character(pos)
+        )
+      ),
+      lemma_clean = stringr::str_to_lower(
+        stringr::str_trim(
+          as.character(lemma)
+        )
+      )
+    ) |>
+    dplyr::filter(
+      pos_clean %in% c(
+        "NOUN",
+        "VERB",
+        "ADJ",
+        "ADV"
+      ),
+      !is.na(lemma_clean),
+      lemma_clean != "",
+      lemma_clean != "null"
+    ) |>
+    dplyr::inner_join(
+      x3cw_sentence_map,
+      by = c(
+        "text_id",
+        "sentence_id"
+      ),
+      relationship = "many-to-one"
+    )
+
+  # Build content-word paragraph segments
+
+  x3cw_paragraph_segments <- paragraph_segment_table |>
+    dplyr::transmute(
+      text_id = as.character(text_id),
+      model,
+      paragraph_id = as.character(paragraph_id),
+      paragraph_number = as.integer(paragraph_number),
+      source_segment_id = segment_id
+    ) |>
+    dplyr::left_join(
+      x3cw_tokens |>
+        dplyr::group_by(
+          text_id,
+          model,
+          paragraph_id,
+          paragraph_number
+        ) |>
+        dplyr::summarise(
+          terms = paste(
+            lemma_clean,
+            collapse = " "
+          ),
+          n_content_tokens = dplyr::n(),
+          .groups = "drop"
+        ),
+      by = c(
+        "text_id",
+        "model",
+        "paragraph_id",
+        "paragraph_number"
+      ),
+      relationship = "one-to-one"
+    ) |>
+    dplyr::mutate(
+      segment_id = paste0(
+        source_segment_id,
+        "_x3cw"
+      ),
+      terms = tidyr::replace_na(
+        terms,
+        ""
+      ),
+      n_content_tokens = tidyr::replace_na(
+        n_content_tokens,
+        0L
+      )
+    ) |>
+    dplyr::arrange(
+      text_id,
+      paragraph_number
+    ) |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::mutate(
+      segment_order = dplyr::row_number()
+    ) |>
+    dplyr::ungroup()
+
+  # Construct the matched DFM
+
+  x3cw_dfm <- quanteda::dfm_match(
+    quanteda::dfm(
+      quanteda::tokens(
+        x3cw_paragraph_segments$terms
+      )
+    ),
+    features = lsa_reference_space$vocabulary
+  )
+
+  x3cw_matrix <- methods::as(
+    x3cw_dfm,
+    "dgCMatrix"
+  )
+
+  x3cw_matrix@x <- log1p(
+    x3cw_matrix@x
+  )
+
+  x3cw_matrix <- x3cw_matrix %*%
+    Matrix::Diagonal(
+      x = lsa_reference_space$idf
+    )
+
+  # Fold segments into the frozen LSA space
+
+  x3cw_vectors_raw <- as.matrix(
+    x3cw_matrix %*%
+      (
+        lsa_reference_space$
+          right_singular_vectors %*%
+          diag(
+            1 /
+              lsa_reference_space$
+                singular_values
+          )
+      )
+  )
+
+  x3cw_norms <- sqrt(
+    rowSums(
+      x3cw_vectors_raw^2
+    )
+  )
+
+  x3cw_valid <- is.finite(
+    x3cw_norms
+  ) & x3cw_norms > 0
+
+  x3cw_vectors <- matrix(
+    NA_real_,
+    nrow = nrow(
+      x3cw_vectors_raw
+    ),
+    ncol = ncol(
+      x3cw_vectors_raw
+    )
+  )
+
+  x3cw_vectors[x3cw_valid, ] <- sweep(
+    x3cw_vectors_raw[
+      x3cw_valid,
+      ,
+      drop = FALSE
+    ],
+    1,
+    x3cw_norms[x3cw_valid],
+    "/"
+  )
+
+  rownames(x3cw_vectors) <-
+    x3cw_paragraph_segments$segment_id
+
+  x3cw_projection <- list(
+    vectors = x3cw_vectors,
+    norms = x3cw_norms,
+    valid = x3cw_valid
+  )
+
+  # Validate and freeze
+
+  stopifnot(
+    nrow(
+      x3cw_paragraph_segments
+    ) == 15L,
+    all(
+      x3cw_paragraph_segments$
+        n_content_tokens > 0L
+    ),
+    !anyDuplicated(
+      x3cw_paragraph_segments$
+        segment_id
+    ),
+    identical(
+      rownames(
+        x3cw_projection$vectors
+      ),
+      x3cw_paragraph_segments$
+        segment_id
+    )
+  )
+
+  x3cw_segments_bundle <- list(
+    pos_keep = c(
+      "NOUN",
+      "VERB",
+      "ADJ",
+      "ADV"
+    ),
+    paragraph_segments =
+      x3cw_paragraph_segments,
+    projection =
+      x3cw_projection
+  )
+
+  saveRDS(
+    x3cw_segments_bundle,
+    x3cw_segments_path
+  )
+
+  message(
+    "x3cw paragraph segments projected and frozen."
+  )
+}
+
+# Display audit
+
+x3cw_paragraph_segments |>
+  dplyr::summarise(
+    n_paragraphs = dplyr::n(),
+    n_content_tokens = sum(
+      n_content_tokens
+    ),
+    n_valid_vectors = sum(
+      x3cw_projection$valid
+    )
+  ) |>
+  print(
+    width = Inf
+  )
+
+```
+# # MODUL 6.37j — Calculate and freeze x3cw continuity
+
+```{r}
+
+# MODUL 6.37j — Calculate and freeze x3cw continuity
+
+x3cw_output_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3cw_paragraph_continuity.rds"
+)
+
+if (file.exists(x3cw_output_path)) {
+
+  x3cw_bundle <- readRDS(x3cw_output_path)
+  x3cw_paragraph_pairs <- x3cw_bundle$paragraph_pairs
+  x3cw_profiles <- x3cw_bundle$profiles
+
+  message("Saved x3cw continuity loaded.")
+
+} else {
+
+  x3cw_cosine <- function(segment_1, segment_2) {
+
+    vector_1 <- x3cw_projection$vectors[
+      segment_1,
+      ,
+      drop = TRUE
+    ]
+
+    vector_2 <- x3cw_projection$vectors[
+      segment_2,
+      ,
+      drop = TRUE
+    ]
+
+    if (
+      anyNA(vector_1) ||
+      anyNA(vector_2)
+    ) {
+      return(NA_real_)
+    }
+
+    sum(vector_1 * vector_2)
+  }
+
+  x3cw_paragraph_pairs <- x3cw_paragraph_segments |>
+    dplyr::arrange(
+      text_id,
+      segment_order
+    ) |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::mutate(
+      next_segment_id = dplyr::lead(segment_id),
+      next_paragraph_id = dplyr::lead(paragraph_id),
+      next_paragraph_number =
+        dplyr::lead(paragraph_number)
+    ) |>
+    dplyr::filter(
+      !is.na(next_segment_id)
+    ) |>
+    dplyr::mutate(
+      normalized_position =
+        (dplyr::row_number() - 1) /
+        pmax(dplyr::n() - 1, 1)
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      x3cw_adjacent_paragraph_similarity =
+        purrr::map2_dbl(
+          segment_id,
+          next_segment_id,
+          x3cw_cosine
+        )
+    ) |>
+    dplyr::select(
+      text_id,
+      model,
+      paragraph_id,
+      paragraph_number,
+      next_paragraph_id,
+      next_paragraph_number,
+      segment_id_1 = segment_id,
+      segment_id_2 = next_segment_id,
+      normalized_position,
+      x3cw_adjacent_paragraph_similarity
+    )
+
+  x3cw_profiles <- x3cw_paragraph_pairs |>
+    dplyr::group_by(
+      text_id,
+      model
+    ) |>
+    dplyr::summarise(
+      x3cw_adjacent_paragraph_similarity_mean =
+        mean(
+          x3cw_adjacent_paragraph_similarity,
+          na.rm = TRUE
+        ),
+      n_adjacent_paragraph_pairs = dplyr::n(),
+      n_valid_x3cw_pairs = sum(
+        is.finite(
+          x3cw_adjacent_paragraph_similarity
+        )
+      ),
+      .groups = "drop"
+    )
+
+  valid_scores <-
+    x3cw_paragraph_pairs$
+      x3cw_adjacent_paragraph_similarity
+
+  valid_scores <- valid_scores[
+    is.finite(valid_scores)
+  ]
+
+  stopifnot(
+    nrow(x3cw_paragraph_pairs) == 11L,
+    nrow(x3cw_profiles) == 4L,
+    all(valid_scores >= -1 & valid_scores <= 1)
+  )
+
+  x3cw_bundle <- list(
+    definition =
+      "Content-word-only paragraph fold-in using NOUN, VERB, ADJ, and ADV within the frozen seven-POS LSA reference space.",
+    paragraph_segments = x3cw_paragraph_segments,
+    projection = x3cw_projection,
+    paragraph_pairs = x3cw_paragraph_pairs,
+    profiles = x3cw_profiles
+  )
+
+  saveRDS(
+    x3cw_bundle,
+    x3cw_output_path
+  )
+
+  readr::write_csv(
+    x3cw_paragraph_pairs,
+    file.path(
+      actual_lsa_output_dir,
+      "modul_6_actual_lsa_x3cw_paragraph_pairs.csv"
+    )
+  )
+
+  readr::write_csv(
+    x3cw_profiles,
+    file.path(
+      actual_lsa_output_dir,
+      "modul_6_actual_lsa_x3cw_profiles.csv"
+    )
+  )
+
+  message("x3cw paragraph continuity calculated and frozen.")
+}
+
+print(
+  x3cw_profiles,
+  n = Inf,
+  width = Inf
+)
+
+print(
+  x3cw_paragraph_pairs,
+  n = Inf,
+  width = Inf
+)
+```
+
+
+# # MODUL 6.38 — Canonicalize and freeze x3s, x3p, and x3pcw
+
+```{r}
+
+# MODUL 6.38 — Canonicalize and freeze x3s, x3p, and x3pcw
+
+# 1. Define input and output paths
+
+x3_legacy_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3.rds"
+)
+
+x3s_gradient_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3_gradient.rds"
+)
+
+x3pcw_legacy_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3cw_paragraph_continuity.rds"
+)
+
+x3s_output_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3s_sentence_continuity.rds"
+)
+
+x3p_output_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3p_paragraph_continuity.rds"
+)
+
+x3pcw_output_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3pcw_paragraph_continuity.rds"
+)
+
+# 2. Load the frozen legacy objects
+
+stopifnot(
+  file.exists(x3_legacy_path),
+  file.exists(x3s_gradient_path),
+  file.exists(x3pcw_legacy_path)
+)
+
+x3_legacy <- readRDS(x3_legacy_path)
+x3s_gradient_legacy <- readRDS(x3s_gradient_path)
+x3pcw_legacy <- readRDS(x3pcw_legacy_path)
+
+# 3. Build the canonical x3s sentence layer
+
+x3s_sentence_pairs <- x3_legacy$sentence_pairs |>
+  dplyr::arrange(
+    text_id,
+    sentence_order_1
+  ) |>
+  dplyr::group_by(
+    text_id,
+    model
+  ) |>
+  dplyr::mutate(
+    normalized_position =
+      (dplyr::row_number() - 1) /
+      pmax(dplyr::n() - 1, 1)
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::rename(
+    x3s_adjacent_sentence_similarity =
+      cosine_similarity
+  )
+
+x3s_profiles <- x3s_gradient_legacy$profiles |>
+  dplyr::transmute(
+    text_id,
+    model,
+    x3s_adjacent_sentence_similarity_mean =
+      x3_adjacent_sentence_similarity_mean,
+    x3s_adjacent_sentence_similarity_sd =
+      x3_adjacent_sentence_similarity_sd,
+    x3s_adjacent_sentence_similarity_gradient =
+      x3_adjacent_sentence_similarity_gradient,
+    x3s_adjacent_sentence_gradient_se =
+      x3_adjacent_sentence_gradient_se,
+    x3s_adjacent_sentence_gradient_r2 =
+      x3_adjacent_sentence_gradient_r2,
+    x3s_adjacent_sentence_similarity_first_third =
+      x3_adjacent_sentence_similarity_first_third,
+    x3s_adjacent_sentence_similarity_middle_third =
+      x3_adjacent_sentence_similarity_middle_third,
+    x3s_adjacent_sentence_similarity_final_third =
+      x3_adjacent_sentence_similarity_final_third,
+    x3s_adjacent_sentence_similarity_retention =
+      x3_adjacent_sentence_similarity_retention,
+    n_x3s_adjacent_sentence_pairs =
+      n_adjacent_sentence_pairs
+  )
+
+# 4. Build the canonical x3p paragraph layer
+
+x3p_paragraph_pairs <- x3_legacy$paragraph_pairs |>
+  dplyr::arrange(
+    text_id,
+    paragraph_order_1
+  ) |>
+  dplyr::group_by(
+    text_id,
+    model
+  ) |>
+  dplyr::mutate(
+    normalized_position =
+      (dplyr::row_number() - 1) /
+      pmax(dplyr::n() - 1, 1)
+  ) |>
+  dplyr::ungroup() |>
+  dplyr::rename(
+    x3p_adjacent_paragraph_similarity =
+      cosine_similarity
+  )
+
+x3p_profiles <- x3_legacy$profiles |>
+  dplyr::transmute(
+    text_id,
+    model,
+    x3p_adjacent_paragraph_similarity_mean =
+      x3_adjacent_paragraph_similarity_mean,
+    n_x3p_adjacent_paragraph_pairs =
+      n_adjacent_paragraph_pairs
+  )
+
+# 5. Build the canonical x3pcw paragraph layer
+
+x3pcw_paragraph_pairs <-
+  x3pcw_legacy$paragraph_pairs |>
+  dplyr::rename(
+    x3pcw_adjacent_paragraph_similarity =
+      x3cw_adjacent_paragraph_similarity
+  )
+
+x3pcw_profiles <- x3pcw_legacy$profiles |>
+  dplyr::transmute(
+    text_id,
+    model,
+    x3pcw_adjacent_paragraph_similarity_mean =
+      x3cw_adjacent_paragraph_similarity_mean,
+    n_x3pcw_adjacent_paragraph_pairs =
+      n_adjacent_paragraph_pairs,
+    n_valid_x3pcw_pairs =
+      n_valid_x3cw_pairs
+  )
+
+# 6. Validate the canonical layers
+
+stopifnot(
+  nrow(x3s_profiles) == 4L,
+  nrow(x3p_paragraph_pairs) == 11L,
+  nrow(x3p_profiles) == 4L,
+  nrow(x3pcw_paragraph_pairs) == 11L,
+  nrow(x3pcw_profiles) == 4L,
+  sum(x3s_profiles$n_x3s_adjacent_sentence_pairs) ==
+    nrow(x3s_sentence_pairs),
+  sum(x3p_profiles$n_x3p_adjacent_paragraph_pairs) ==
+    nrow(x3p_paragraph_pairs),
+  sum(x3pcw_profiles$n_x3pcw_adjacent_paragraph_pairs) ==
+    nrow(x3pcw_paragraph_pairs),
+  all(is.finite(
+    x3s_sentence_pairs$x3s_adjacent_sentence_similarity
+  )),
+  all(is.finite(
+    x3p_paragraph_pairs$x3p_adjacent_paragraph_similarity
+  )),
+  all(is.finite(
+    x3pcw_paragraph_pairs$
+      x3pcw_adjacent_paragraph_similarity
+  ))
+)
+
+# 7. Freeze the canonical layers
+
+x3s_bundle <- list(
+  level = "sentence",
+  definition =
+    "Sentence-level adjacent semantic continuity.",
+  sentence_pairs = x3s_sentence_pairs,
+  profiles = x3s_profiles
+)
+
+x3p_bundle <- list(
+  level = "paragraph",
+  definition =
+    "Paragraph-level adjacent semantic continuity using the full seven-POS target layer.",
+  paragraph_pairs = x3p_paragraph_pairs,
+  profiles = x3p_profiles
+)
+
+x3pcw_bundle <- list(
+  level = "paragraph_content_words",
+  definition =
+    "Paragraph-level adjacent topic continuity using NOUN, VERB, ADJ, and ADV.",
+  pos_keep = c(
+    "NOUN",
+    "VERB",
+    "ADJ",
+    "ADV"
+  ),
+  paragraph_segments =
+    x3pcw_legacy$paragraph_segments,
+  projection =
+    x3pcw_legacy$projection,
+  paragraph_pairs =
+    x3pcw_paragraph_pairs,
+  profiles =
+    x3pcw_profiles
+)
+
+saveRDS(x3s_bundle, x3s_output_path)
+saveRDS(x3p_bundle, x3p_output_path)
+saveRDS(x3pcw_bundle, x3pcw_output_path)
+
+readr::write_csv(
+  x3s_sentence_pairs,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x3s_sentence_pairs.csv"
+  )
+)
+
+readr::write_csv(
+  x3p_paragraph_pairs,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x3p_paragraph_pairs.csv"
+  )
+)
+
+readr::write_csv(
+  x3pcw_paragraph_pairs,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x3pcw_paragraph_pairs.csv"
+  )
+)
+
+readr::write_csv(
+  x3s_profiles,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x3s_profiles.csv"
+  )
+)
+
+readr::write_csv(
+  x3p_profiles,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x3p_profiles.csv"
+  )
+)
+
+readr::write_csv(
+  x3pcw_profiles,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x3pcw_profiles.csv"
+  )
+)
+
+# 8. Display the canonicalization audit
+
+tibble::tibble(
+  layer = c(
+    "x3s sentence pairs",
+    "x3s profiles",
+    "x3p paragraph pairs",
+    "x3p profiles",
+    "x3pcw paragraph pairs",
+    "x3pcw profiles"
+  ),
+  rows = c(
+    nrow(x3s_sentence_pairs),
+    nrow(x3s_profiles),
+    nrow(x3p_paragraph_pairs),
+    nrow(x3p_profiles),
+    nrow(x3pcw_paragraph_pairs),
+    nrow(x3pcw_profiles)
+  )
+) |>
+  print(
+    n = Inf,
+    width = Inf
+  )
+```
+
+
+# 8. Reload and verify the canonical frozen objects
+
+```{r}
+# 8. Reload and verify the canonical frozen objects
+
+x3s_reload <- readRDS(x3s_output_path)
+x3p_reload <- readRDS(x3p_output_path)
+x3pcw_reload <- readRDS(x3pcw_output_path)
+
+stopifnot(
+  "x3s_adjacent_sentence_similarity" %in%
+    names(x3s_reload$sentence_pairs),
+
+  "x3s_adjacent_sentence_similarity_mean" %in%
+    names(x3s_reload$profiles),
+
+  "x3p_adjacent_paragraph_similarity" %in%
+    names(x3p_reload$paragraph_pairs),
+
+  "x3p_adjacent_paragraph_similarity_mean" %in%
+    names(x3p_reload$profiles),
+
+  "x3pcw_adjacent_paragraph_similarity" %in%
+    names(x3pcw_reload$paragraph_pairs),
+
+  "x3pcw_adjacent_paragraph_similarity_mean" %in%
+    names(x3pcw_reload$profiles)
+)
+
+message(
+  "Canonical x3s, x3p, and x3pcw names verified in frozen outputs."
+)
+```
+
+
+# MODUL 6.38a — Calculate and freeze x3pcw topic-continuity (alias semantic similarity continuity) gradients
+
+```{r}
+
+# MODUL 6.38a — Calculate and freeze x3pcw topic-continuity gradients
+
+# 1. Define input and output paths
+
+x3pcw_input_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3pcw_paragraph_continuity.rds"
+)
+
+x3pcw_gradient_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3pcw_topic_continuity_gradient.rds"
+)
+
+x3pcw_gradient_csv_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3pcw_topic_continuity_gradient.csv"
+)
+
+# 2. Load the canonical x3pcw layer
+
+stopifnot(
+  file.exists(x3pcw_input_path)
+)
+
+x3pcw_bundle <- readRDS(
+  x3pcw_input_path
+)
+
+x3pcw_paragraph_pairs <-
+  x3pcw_bundle$paragraph_pairs
+
+x3pcw_profiles <-
+  x3pcw_bundle$profiles
+
+stopifnot(
+  nrow(x3pcw_paragraph_pairs) == 11L,
+  nrow(x3pcw_profiles) == 4L,
+  all(
+    c(
+      "text_id",
+      "model",
+      "normalized_position",
+      "x3pcw_adjacent_paragraph_similarity"
+    ) %in%
+      names(x3pcw_paragraph_pairs)
+  )
+)
+
+# 3. Define the gradient function
+
+calculate_x3pcw_gradient <- function(data) {
+
+  valid_data <- data |>
+    dplyr::filter(
+      is.finite(normalized_position),
+      is.finite(
+        x3pcw_adjacent_paragraph_similarity
+      )
+    ) |>
+    dplyr::arrange(
+      normalized_position
+    )
+
+  n_valid <- nrow(
+    valid_data
+  )
+
+  if (n_valid < 2L) {
+    return(
+      tibble::tibble(
+        n_valid_x3pcw_gradient_pairs = n_valid,
+        x3pcw_topic_continuity_first = NA_real_,
+        x3pcw_topic_continuity_final = NA_real_,
+        x3pcw_topic_continuity_change = NA_real_,
+        x3pcw_adjacent_paragraph_similarity_gradient = NA_real_,
+        x3pcw_adjacent_paragraph_gradient_se = NA_real_,
+        x3pcw_adjacent_paragraph_gradient_r2 = NA_real_
+      )
+    )
+  }
+
+  gradient_model <- stats::lm(
+    x3pcw_adjacent_paragraph_similarity ~
+      normalized_position,
+    data = valid_data
+  )
+
+  gradient_summary <- summary(
+    gradient_model
+  )
+
+  tibble::tibble(
+    n_valid_x3pcw_gradient_pairs = n_valid,
+    x3pcw_topic_continuity_first =
+      dplyr::first(
+        valid_data$
+          x3pcw_adjacent_paragraph_similarity
+      ),
+    x3pcw_topic_continuity_final =
+      dplyr::last(
+        valid_data$
+          x3pcw_adjacent_paragraph_similarity
+      ),
+    x3pcw_topic_continuity_change =
+      x3pcw_topic_continuity_final -
+      x3pcw_topic_continuity_first,
+    x3pcw_adjacent_paragraph_similarity_gradient =
+      unname(
+        stats::coef(
+          gradient_model
+        )[["normalized_position"]]
+      ),
+    x3pcw_adjacent_paragraph_gradient_se =
+      dplyr::if_else(
+        n_valid >= 3L,
+        unname(
+          gradient_summary$coefficients[
+            "normalized_position",
+            "Std. Error"
+          ]
+        ),
+        NA_real_
+      ),
+    x3pcw_adjacent_paragraph_gradient_r2 =
+      dplyr::if_else(
+        n_valid >= 3L,
+        unname(
+          gradient_summary$r.squared
+        ),
+        NA_real_
+      )
+  )
+}
+
+# 4. Calculate topic-continuity gradients
+
+x3pcw_gradient_profiles <-
+  x3pcw_paragraph_pairs |>
+  dplyr::group_by(
+    text_id,
+    model
+  ) |>
+  dplyr::group_modify(
+    ~ calculate_x3pcw_gradient(.x)
+  ) |>
+  dplyr::ungroup()
+
+# 5. Extend the x3pcw text profiles
+
+x3pcw_profiles_extended <-
+  x3pcw_profiles |>
+  dplyr::left_join(
+    x3pcw_gradient_profiles,
+    by = c(
+      "text_id",
+      "model"
+    )
+  ) |>
+  dplyr::arrange(
+    text_id
+  )
+
+# 6. Validate the gradient results
+
+stopifnot(
+  nrow(x3pcw_profiles_extended) == 4L,
+  all(
+    is.finite(
+      x3pcw_profiles_extended$
+        x3pcw_adjacent_paragraph_similarity_gradient
+    )
+  ),
+  all(
+    x3pcw_profiles_extended$
+      n_valid_x3pcw_gradient_pairs >= 2L
+  ),
+  all(
+    x3pcw_profiles_extended$
+      x3pcw_adjacent_paragraph_similarity_gradient >= -2 &
+      x3pcw_profiles_extended$
+      x3pcw_adjacent_paragraph_similarity_gradient <= 2
+  )
+)
+
+# 7. Freeze the gradient bundle
+
+x3pcw_gradient_bundle <- list(
+  definition =
+    paste(
+      "Development of paragraph-level topic continuity",
+      "over normalized text position using content-word-only",
+      "adjacent-paragraph LSA similarity."
+    ),
+  paragraph_pairs =
+    x3pcw_paragraph_pairs,
+  gradient_profiles =
+    x3pcw_gradient_profiles,
+  profiles_extended =
+    x3pcw_profiles_extended
+)
+
+saveRDS(
+  x3pcw_gradient_bundle,
+  x3pcw_gradient_path
+)
+
+readr::write_csv(
+  x3pcw_profiles_extended,
+  x3pcw_gradient_csv_path
+)
+
+# 8. Reload and verify the frozen output
+
+x3pcw_gradient_reload <- readRDS(
+  x3pcw_gradient_path
+)
+
+stopifnot(
+  nrow(
+    x3pcw_gradient_reload$
+      paragraph_pairs
+  ) == 11L,
+  nrow(
+    x3pcw_gradient_reload$
+      profiles_extended
+  ) == 4L,
+  "x3pcw_adjacent_paragraph_similarity_gradient" %in%
+    names(
+      x3pcw_gradient_reload$
+        profiles_extended
+    )
+)
+
+message(
+  "x3pcw topic-continuity gradients verified in frozen output."
+)
+
+# 9. Display the extended profiles
+
+x3pcw_profiles_extended |>
+  dplyr::select(
+    text_id,
+    model,
+    x3pcw_adjacent_paragraph_similarity_mean,
+    x3pcw_topic_continuity_first,
+    x3pcw_topic_continuity_final,
+    x3pcw_topic_continuity_change,
+    x3pcw_adjacent_paragraph_similarity_gradient,
+    x3pcw_adjacent_paragraph_gradient_se,
+    x3pcw_adjacent_paragraph_gradient_r2,
+    n_valid_x3pcw_gradient_pairs
+  ) |>
+  print(
+    n = Inf,
+    width = Inf
+  )
+```
+# Note: The Semantic Coherence Matrix
+In the yet to follow matrix, Topic Continuity (operationalized as adjacent semantic similarity) is a graded measure of semantic continuity that can be higher or lower. The Topic-continuity gradient represents the change in adjacent semantic similarity over normalized text position (here on paragraph level, a paragraph was vectorized for the LSA to be applied). The x3 (x3s [sentnce-level], x3p [paragraph-level], x3pcw [content words over paragraphs]) indices were calculated over 
+x3s sentence pairs:       102
+x3s profiles:               4
++
+x3p paragraph pairs:       11
+x3p profiles:               4
++
+x3pcw paragraph pairs:     11
+x3pcw profiles:             4
+
+
+Current x3pcw results
+Mean Topic-Continuity level
+Human      0.3056374
+Claude     0.2454105
+Gemini     0.1643951
+ChatGPT    0.1482608
+
+Ranking:
+
+Human > Claude > Gemini > ChatGPT
+Topic-continuity gradients
+ChatGPT   +0.11153652
+Claude    −0.13371286
+Gemini    −0.27977701
+Human     +0.05262017
+
+Interpretation:
+
+Human
+→ highest overall Topic Continuity;
+  small positive trajectory
+
+Claude
+→ relatively high Topic Continuity;
+  declining trajectory
+
+ChatGPT
+→ lowest overall Topic Continuity;
+  improving trajectory from a very low starting point
+
+Gemini
+→ low Topic Continuity;
+  strongest decline
+
+For texts with only two paragraph transitions, gradient standard error and R 2 remain NA.
+
+Observed R
+2
+ values:
+
+ChatGPT   0.1062
+Human     0.0367
+Claude    NA
+Gemini    NA
+
+The low values for ChatGPT and Human show that their trajectories are not strongly linear.
+
+Semantic Coherence Matrix
+Topic-continuity level	Positive or near-stable gradient	Negative gradient
+High	Human: high and comparatively stable continuity	Claude: high level, fading continuity
+Low	ChatGPT: low but improving continuity	Gemini: low level, rapid continuity loss
+
+Out of need for normalization, we hypothesize a idealized Point d’Or which configaration would be
+
+high Topic-Continuity level + gradient near zero = high and stable semantic continuity
+
+The human generated text stands out in that regard and is currently closest to this configuration.
+
+Topic Continuity (Level): This is given by the mean of adjacent semantic similarity. It answers the question: How high or low is the topic continuity throughout the text over existent paragraphs?
+
+Trajectory (Gradient): This is given by the change in adjacent semantic similarity over normalized text (continuiation). It answers the question: Does the topic continuity increase, decrease, or remain stable as the text progresses?
+
+Hovewer it appears obvious to ask whether and how is paragraph-level LSA Topic Continuity associated with exact content-lemma overlap? Because current text-level rankings appear different: y4 content-lemma overlap → 1.ChatGPT > 2. Human > 3.Gemini > 4. Claude and x3pcw Topic Continuity → 1. Human > 2. Claude > 3. Gemini > 4. ChatGPT,  the analysis asks whether higher exact content-lemma overlap predicts higher LSA-based Topic Continuity, which motivates the the later pair-level correlation analysis. Therefore to grasp that central research question at this point the relevant measures become  y4 (content_jaccard) and x3pcw and its exploring their relation:
+
+y4_content_jaccard ↔ x3pcw_adjacent_paragraph_similarity
+
+Both measures use the same 11 adjacent paragraph transitions, i.e. they use NOUN, VERB, ADJ, ADV and operate on paragraph level.
+
+y4_content_jaccard shows the exact recurrence of content lemmas, while x3pcw is intended to latent semantic Topic Continuity. 
+
+# --------- end of Note -------------------------------------------
+
+# # MODUL 6.38b — Join and freeze matched y4 and x3pcw paragraph transitions
+This cell reads the two frozen pair-level sources, verifies identical paragraph boundaries, creates normalized within-text position, and freezes the 11-transition table. The y4 source already contains paragraph_number, next_paragraph_number, and y4_content_jaccard.
+* We are doing this to test whether exact content-word repetition (y4) actually co-varies with latent paragraph-level Topic Continuity (x3pcw) across the same 11 paragraph transitions. The joined table is needed because the correlation, regression, and scatterplot require both measures aligned row by row for each identical transition.
+
+
+#
+
+```{r}
+file.exists(
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_y4_x3pcw_matched_transitions.rds"
+  )
+)
+```
+
+
+# Modul 6.38b -
+
+```{r}
+# MODUL 6.38b — Join and freeze matched y4 and x3pcw paragraph transitions
+
+matched_transition_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_matched_transitions.rds"
+)
+
+if (file.exists(matched_transition_path)) {
+
+  y4_x3pcw_matched_transitions <- readRDS(matched_transition_path)
+
+} else {
+
+  y4_pairs <- readRDS(
+    file.path(actual_lsa_output_dir, "ccp_module_5c_y4_pairwise.rds")
+  ) |>
+    dplyr::transmute(
+      text_id,
+      model,
+      paragraph_number_1 = paragraph_number,
+      paragraph_number_2 = next_paragraph_number,
+      y4_content_jaccard
+    )
+
+  x3pcw_pairs <- readRDS(
+    file.path(
+      actual_lsa_output_dir,
+      "modul_6_actual_lsa_x3pcw_paragraph_continuity.rds"
+    )
+  )$paragraph_pairs |>
+    dplyr::transmute(
+      text_id,
+      model,
+      paragraph_number_1 = paragraph_number,
+      paragraph_number_2 = next_paragraph_number,
+      x3pcw_adjacent_paragraph_similarity
+    ) |>
+    dplyr::arrange(text_id, paragraph_number_1) |>
+    dplyr::group_by(text_id, model) |>
+    dplyr::mutate(
+      paragraph_pair_id = paste0(
+        "P", paragraph_number_1, "_P", paragraph_number_2
+      ),
+      normalized_position =
+        (dplyr::row_number() - 1) / pmax(dplyr::n() - 1, 1)
+    ) |>
+    dplyr::ungroup()
+
+  y4_x3pcw_matched_transitions <- x3pcw_pairs |>
+    dplyr::inner_join(
+      y4_pairs,
+      by = c(
+        "text_id",
+        "model",
+        "paragraph_number_1",
+        "paragraph_number_2"
+      ),
+      relationship = "one-to-one"
+    ) |>
+    dplyr::mutate(
+      source_group = dplyr::if_else(
+        text_id == "HUMAN_BASELINE_001",
+        "human",
+        "lm"
+      )
+    ) |>
+    dplyr::select(
+      text_id,
+      model,
+      source_group,
+      paragraph_number_1,
+      paragraph_number_2,
+      paragraph_pair_id,
+      normalized_position,
+      y4_content_jaccard,
+      x3pcw_adjacent_paragraph_similarity
+    )
+
+  saveRDS(y4_x3pcw_matched_transitions, matched_transition_path)
+}
+
+stopifnot(
+  nrow(y4_x3pcw_matched_transitions) == 11L,
+  dplyr::n_distinct(y4_x3pcw_matched_transitions$text_id) == 4L,
+  table(y4_x3pcw_matched_transitions$source_group)[["lm"]] == 7L,
+  table(y4_x3pcw_matched_transitions$source_group)[["human"]] == 4L,
+  !anyNA(
+    y4_x3pcw_matched_transitions[
+      c(
+        "y4_content_jaccard",
+        "x3pcw_adjacent_paragraph_similarity"
+      )
+    ]
+  )
+)
+
+y4_x3pcw_matched_transitions
+```
+
+
+#
+
+```{r}
+stopifnot(
+  nrow(y4_x3pcw_matched_transitions) == 11L,
+  dplyr::n_distinct(y4_x3pcw_matched_transitions$text_id) == 4L,
+  sum(y4_x3pcw_matched_transitions$source_group == "lm") == 7L,
+  sum(y4_x3pcw_matched_transitions$source_group == "human") == 4L,
+  all(
+    y4_x3pcw_matched_transitions$paragraph_number_2 ==
+      y4_x3pcw_matched_transitions$paragraph_number_1 + 1L
+  ),
+  sum(is.na(
+    y4_x3pcw_matched_transitions$y4_content_jaccard
+  )) == 0L,
+  sum(is.na(
+    y4_x3pcw_matched_transitions$
+      x3pcw_adjacent_paragraph_similarity
+  )) == 0L
+)
+message(
+  "Matched y4–x3pcw transitions validated successfully: ",
+  nrow(y4_x3pcw_matched_transitions),
+  " transitions across ",
+  dplyr::n_distinct(y4_x3pcw_matched_transitions$text_id),
+  " texts."
+)
+```
+# Note: stopifnot() produces no output when all conditions are satisfied.
+
+
+# # MODUL 6.38c — Calculate and freeze y4–x3pcw relationship diagnostics
+
+```{r}
+# MODUL 6.38c — Calculate and freeze y4–x3pcw relationship diagnostics
+
+y4_x3pcw_matched_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_matched_transitions.rds"
+)
+
+y4_x3pcw_diagnostics_rds_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_relationship_diagnostics.rds"
+)
+
+y4_x3pcw_diagnostics_csv_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_relationship_diagnostics.csv"
+)
+
+y4_x3pcw_matched_transitions <- readRDS(
+  y4_x3pcw_matched_path
+)
+
+calculate_y4_x3pcw_relationship <- function(data, scope) {
+  analysis_data <- data |>
+    dplyr::filter(
+      !is.na(y4_content_jaccard),
+      !is.na(x3pcw_adjacent_paragraph_similarity)
+    )
+
+  relationship_model <- stats::lm(
+    x3pcw_adjacent_paragraph_similarity ~
+      y4_content_jaccard,
+    data = analysis_data
+  )
+
+  tibble::tibble(
+    analysis_scope = scope,
+    n_matched_transitions = nrow(analysis_data),
+    pearson_correlation = stats::cor(
+      analysis_data$y4_content_jaccard,
+      analysis_data$x3pcw_adjacent_paragraph_similarity,
+      method = "pearson"
+    ),
+    spearman_correlation = stats::cor(
+      analysis_data$y4_content_jaccard,
+      analysis_data$x3pcw_adjacent_paragraph_similarity,
+      method = "spearman"
+    ),
+    regression_intercept = unname(
+      stats::coef(relationship_model)[1]
+    ),
+    regression_slope = unname(
+      stats::coef(relationship_model)[2]
+    ),
+    regression_r2 = summary(
+      relationship_model
+    )$r.squared
+  )
+}
+
+y4_x3pcw_relationship_diagnostics <- dplyr::bind_rows(
+  calculate_y4_x3pcw_relationship(
+    y4_x3pcw_matched_transitions,
+    "all_texts"
+  ),
+  calculate_y4_x3pcw_relationship(
+    dplyr::filter(
+      y4_x3pcw_matched_transitions,
+      source_group == "lm"
+    ),
+    "lms_only"
+  ),
+  calculate_y4_x3pcw_relationship(
+    dplyr::filter(
+      y4_x3pcw_matched_transitions,
+      source_group == "human"
+    ),
+    "human_only"
+  )
+)
+
+saveRDS(
+  y4_x3pcw_relationship_diagnostics,
+  y4_x3pcw_diagnostics_rds_path
+)
+
+readr::write_csv(
+  y4_x3pcw_relationship_diagnostics,
+  y4_x3pcw_diagnostics_csv_path
+)
+
+y4_x3pcw_relationship_diagnostics <- readRDS(
+  y4_x3pcw_diagnostics_rds_path
+)
+
+stopifnot(
+  nrow(y4_x3pcw_relationship_diagnostics) == 3L,
+  identical(
+    y4_x3pcw_relationship_diagnostics$
+      n_matched_transitions,
+    c(11L, 7L, 4L)
+  ),
+  all(
+    y4_x3pcw_relationship_diagnostics$analysis_scope ==
+      c("all_texts", "lms_only", "human_only")
+  )
+)
+
+y4_x3pcw_relationship_diagnostics
+```
+# Interpretative note:
+
+The primary all-text analysis suggests 
+
+greater exact content-lemma recurrence
+tends to coincide with greater latent Topic Continuity, but only within the human baseline. The LM-only result is essentially zero:
+
+Pearson r = −0.0224
+Spearman ρ = −0.0714
+R² = 0.0005
+
+This means that exact content-word repetition does not meaningfully predict x3pcw Topic Continuity across the seven LM transitions!
+
+The positive pooled relationship appears to be exclusivelly influenced by the four Human transitions, which show a strong positive pattern. Because the Human analysis has only four observations, it must remain exploratory.
+
+Conclusive note: Across all eleven transitions, exact content-lemma recurrence showed a moderate positive descriptive association with latent Topic Continuity. This relationship disappeared when the analysis was restricted to the seven LM transitions, suggesting that the pooled association was substantially influenced by the Human paragraph transitions. Exact lexical recurrence and latent semantic continuity therefore cannot be treated as interchangeable properties in the present data.
+The way the LMs use lexical material repetitively to maintain Topic Continuity does not lead to a corresponding Topic-Continuity resolution as measured with LSA. This is therefore one of the clearest decoupling indices the CCP has shown so far: exact lexical recurrence and latent semantic continuity are structurally distinct and do not necessarily co-vary.
+
+More specifically, the LM-only analysis shows that the repetitive use of content lemmas does not contribute at all to explaining variation in x3pcw Topic Continuity:
+
+
+r=-0.0224,\qquad
+\rho=-0.0714,\qquad
+R^2=0.0005.
+
+Interpretation Note:  The LMs can therefore use lexical material repetitively to maintain the appearance of topic continuity without this repetition structurally leading to a corresponding latent Topic-Continuity resolution in the LSA space, something we know from Bajohr’s observations about “surface cohesion.” However, the CCP provides a more fine-grained hypothesis: in a deeper sense, as explained throughout the Theoretical Part, LMs are not even cohesive in a human-centered manner. Their cohesion is not motivated by meaning generation (which would converge on coherence), but by a task-driven notion of topicality. The result does not establish causality, but it provides strong descriptive evidence that lexical repetition cannot be treated as equivalent to semantic Topic Continuity.
+
+
+#
+
+```{r}
+
+# Freeze plot-ready text-specific relationships
+
+y4_x3pcw_scatterplot_data_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_scatterplot_data.rds"
+)
+
+y4_x3pcw_plot_points <- y4_x3pcw_matched_transitions |>
+  dplyr::mutate(
+    text_label = dplyr::recode(
+      model,
+      human = "Human",
+      chatgpt_native = "ChatGPT",
+      claude_native = "Claude",
+      gemini_native = "Gemini"
+    ),
+    text_label = factor(
+      text_label,
+      levels = c(
+        "Human",
+        "ChatGPT",
+        "Claude",
+        "Gemini"
+      )
+    )
+  ) |>
+  dplyr::arrange(
+    text_label,
+    y4_content_jaccard
+  )
+
+y4_x3pcw_fitted_lines <- y4_x3pcw_plot_points |>
+  dplyr::filter(
+    text_label %in% c(
+      "Human",
+      "ChatGPT"
+    )
+  ) |>
+  dplyr::group_by(
+    text_id,
+    text_label
+  ) |>
+  dplyr::group_modify(
+    ~ {
+      relationship_model <- stats::lm(
+        x3pcw_adjacent_paragraph_similarity ~
+          y4_content_jaccard,
+        data = .x
+      )
+
+      fitted_x <- seq(
+        min(.x$y4_content_jaccard),
+        max(.x$y4_content_jaccard),
+        length.out = 100L
+      )
+
+      tibble::tibble(
+        y4_content_jaccard = fitted_x,
+        x3pcw_fitted = stats::predict(
+          relationship_model,
+          newdata = tibble::tibble(
+            y4_content_jaccard = fitted_x
+          )
+        )
+      )
+    }
+  ) |>
+  dplyr::ungroup()
+
+y4_x3pcw_scatterplot_data <- list(
+  points = y4_x3pcw_plot_points,
+  fitted_lines = y4_x3pcw_fitted_lines
+)
+
+saveRDS(
+  y4_x3pcw_scatterplot_data,
+  y4_x3pcw_scatterplot_data_path
+)
+
+y4_x3pcw_scatterplot_data <- readRDS(
+  y4_x3pcw_scatterplot_data_path
+)
+
+stopifnot(
+  nrow(y4_x3pcw_scatterplot_data$points) == 11L,
+  nrow(y4_x3pcw_scatterplot_data$fitted_lines) == 200L,
+  dplyr::n_distinct(
+    y4_x3pcw_scatterplot_data$points$text_id
+  ) == 4L
+)
+
+message(
+  "Plot-ready y4–x3pcw relationships validated successfully."
+)
+```
+
+# # MODUL 6.38d — Plot lexical overlap versus Topic Continuity
+
+```{r}
+
+```
+
+#
+
+```{r}
+# MODUL 6.38e — Plot observed y4 content-word continuity waves
+
+y4_x3pcw_matched_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_matched_transitions.rds"
+)
+
+y4_content_wave_plot_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_content_continuity_waves.png"
+)
+
+y4_content_wave_data <- readRDS(
+  y4_x3pcw_matched_path
+) |>
+  dplyr::mutate(
+    text_label = dplyr::recode(
+      model,
+      human = "Human",
+      chatgpt_native = "ChatGPT",
+      claude_native = "Claude",
+      gemini_native = "Gemini"
+    ),
+    text_label = factor(
+      text_label,
+      levels = c(
+        "Human",
+        "ChatGPT",
+        "Claude",
+        "Gemini"
+      )
+    )
+  ) |>
+  dplyr::arrange(
+    text_label,
+    normalized_position
+  )
+
+modul_6_y4_content_continuity_waves <- ggplot2::ggplot(
+  y4_content_wave_data,
+  ggplot2::aes(
+    x = normalized_position,
+    y = y4_content_jaccard,
+    group = text_label,
+    colour = text_label
+  )
+) +
+  ggplot2::geom_line(
+    linewidth = 0.8
+  ) +
+  ggplot2::geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+  ggplot2::facet_wrap(
+    ~ text_label,
+    ncol = 2,
+    scales = "fixed"
+  ) +
+  ggplot2::scale_x_continuous(
+    breaks = c(0, 0.5, 1),
+    limits = c(0, 1)
+  ) +
+  ggplot2::scale_color_brewer(
+    palette = "Set1"
+  ) +
+  ggplot2::labs(
+    title = "Observed exact lexical continuity across paragraph transitions",
+    subtitle = "Content-word Jaccard overlap for the four texts",
+    x = "Normalized paragraph-transition position",
+    y = "Content-word Jaccard overlap"
+  ) +
+  ggplot2::theme_minimal(
+    base_size = 11
+  ) +
+  ggplot2::theme(
+    legend.position = "none",
+    panel.grid.minor = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(
+      face = "bold",
+      size = 12
+    )
+  )
+
+ggplot2::ggsave(
+  filename = y4_content_wave_plot_path,
+  plot = modul_6_y4_content_continuity_waves,
+  width = 9,
+  height = 7,
+  dpi = 300
+)
+
+modul_6_y4_content_continuity_waves
+```
+
+# Caveat Note: Because the four texts contain different numbers of paragraphs, their adjacent-paragraph transitions are not directly equivalent on a one-to-one basis. Normalized transition position allows only a descriptive comparison of relative within-text development; it does not equalize the number or structural function of the paragraph boundaries. The x3pcw text means are therefore treated as the principal comparative measures, while the gradients and observed waves remain secondary descriptive diagnostics. For Claude and Gemini, which contain only two transitions, the gradients represent simple two-point differences rather than sustained developmental trajectories. + What remains strongly comparable is the shared measure "x3pcw_adjacent_paragraph_similarity_mean". It summarizes the overall meso-to-macro, near-global level of Topic Continuity despite different numbers of transitions. The gradient is secondary: for Human and ChatGPT it offers only limited directional diagnostics, and for Claude and Gemini it reduces to two-point differences only.
+
+
+# 
+
+```{r}
+
+matched_object <- readRDS(
+  y4_x3pcw_matched_path
+)
+
+gradient_object <- readRDS(
+  x3pcw_gradient_path
+)
+
+class(matched_object)
+names(matched_object)
+
+class(gradient_object)
+names(gradient_object)
+
+```
+
+
+#
+
+
+```{r}
+# MODUL 6.38f — Plot x3pcw Topic-Continuity trajectories
+
+# MODUL 6.38e — Plot observed x3pcw Topic-Continuity trajectories
+
+y4_x3pcw_matched_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_y4_x3pcw_matched_transitions.rds"
+)
+
+x3pcw_trajectory_plot_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3pcw_topic_continuity_trajectories.png"
+)
+
+x3pcw_trajectory_data <- readRDS(
+  y4_x3pcw_matched_path
+) |>
+  dplyr::mutate(
+    text_label = dplyr::recode(
+      model,
+      human = "Human",
+      chatgpt_native = "ChatGPT",
+      claude_native = "Claude",
+      gemini_native = "Gemini"
+    ),
+    text_label = factor(
+      text_label,
+      levels = c(
+        "Human",
+        "ChatGPT",
+        "Claude",
+        "Gemini"
+      )
+    )
+  ) |>
+  dplyr::arrange(
+    text_label,
+    normalized_position
+  )
+
+stopifnot(
+  nrow(x3pcw_trajectory_data) == 11L,
+  dplyr::n_distinct(x3pcw_trajectory_data$text_id) == 4L,
+  all(
+    !is.na(
+      x3pcw_trajectory_data$
+        x3pcw_adjacent_paragraph_similarity
+    )
+  )
+)
+
+modul_6_x3pcw_topic_continuity_trajectories <- ggplot2::ggplot(
+  x3pcw_trajectory_data,
+  ggplot2::aes(
+    x = normalized_position,
+    y = x3pcw_adjacent_paragraph_similarity,
+    colour = text_label,
+    group = text_label
+  )
+) +
+  ggplot2::geom_line(
+    linewidth = 0.8
+  ) +
+  ggplot2::geom_point(
+    size = 3,
+    alpha = 0.9
+  ) +
+  ggplot2::facet_wrap(
+    ~ text_label,
+    ncol = 2,
+    scales = "fixed"
+  ) +
+  ggplot2::scale_x_continuous(
+    breaks = c(0, 0.5, 1),
+    limits = c(0, 1)
+  ) +
+  ggplot2::scale_color_brewer(
+    palette = "Set1"
+  ) +
+  ggplot2::labs(
+    title = "Observed meso-level Topic Continuity across paragraph transitions",
+    subtitle = "Content-word x3pcw similarity within each text",
+    x = "Normalized paragraph-transition position",
+    y = "Paragraph-level Topic Continuity",
+    caption = paste(
+      "The trajectories are descriptive.",
+      "The texts contain different numbers of paragraph transitions."
+    )
+  ) +
+  ggplot2::theme_minimal(
+    base_size = 11
+  ) +
+  ggplot2::theme(
+    legend.position = "none",
+    panel.grid.minor = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(
+      face = "bold"
+    )
+  )
+
+ggplot2::ggsave(
+  filename = x3pcw_trajectory_plot_path,
+  plot = modul_6_x3pcw_topic_continuity_trajectories,
+  width = 9,
+  height = 7,
+  dpi = 300
+)
+
+modul_6_x3pcw_topic_continuity_trajectories
+```
+
+
+#
+
+```{r}
+# MODUL 6.38e — Overlapped Continuity Waves (Lexical y4 & Semantic x3pcw)
+# MODUL 6.38e — Overlapped Continuity Waves (Lexical y4 & Semantic x3pcw)
+
+library(ggplot2)
+library(dplyr)
+
+# 1. Load and prepare the shared data
+y4_x3pcw_matched_path <- file.path(actual_lsa_output_dir, "modul_6_actual_lsa_y4_x3pcw_matched_transitions.rds")
+combined_wave_plot_path <- file.path(actual_lsa_output_dir, "modul_6_actual_lsa_combined_continuity_waves.png")
+
+combined_wave_data <- readRDS(y4_x3pcw_matched_path) |>
+  dplyr::mutate(
+    text_label = dplyr::recode(model, human = "Human", chatgpt_native = "ChatGPT", claude_native = "Claude", gemini_native = "Gemini"),
+    text_label = factor(text_label, levels = c("Human", "ChatGPT", "Claude", "Gemini"))
+  ) |>
+  dplyr::arrange(text_label, normalized_position)
+
+# 2. Define the sample-relative x3pcw Point d’Or
+point_dor_level <- combined_wave_data |>
+  dplyr::group_by(text_id) |>
+  dplyr::summarise(x3pcw_text_mean = mean(x3pcw_adjacent_paragraph_similarity), .groups = "drop") |>
+  dplyr::summarise(point_dor_level = max(x3pcw_text_mean)) |>
+  dplyr::pull(point_dor_level)
+
+stopifnot(length(point_dor_level) == 1L, is.finite(point_dor_level))
+
+# 3. Build the combined overlap plot
+modul_6_combined_continuity_waves <- ggplot2::ggplot(combined_wave_data, ggplot2::aes(x = normalized_position)) +
+
+  # 3.1 Add the independent sample-relative Point d’Or reference
+  ggplot2::geom_hline(yintercept = point_dor_level, linetype = "dotted", colour = "black", linewidth = 0.8, alpha = 0.6) +
+
+  # 3.2 Add exact lexical continuity
+  ggplot2::geom_line(ggplot2::aes(y = y4_content_jaccard, colour = text_label, linetype = "Lexical (y4 Jaccard)"), linewidth = 0.9) +
+  ggplot2::geom_point(ggplot2::aes(y = y4_content_jaccard, colour = text_label), size = 2.5, alpha = 0.8) +
+
+  # 3.3 Add latent semantic Topic Continuity
+  ggplot2::geom_line(ggplot2::aes(y = x3pcw_adjacent_paragraph_similarity, colour = text_label, linetype = "Semantic (x3pcw LSA)"), linewidth = 0.9) +
+  ggplot2::geom_point(ggplot2::aes(y = x3pcw_adjacent_paragraph_similarity, colour = text_label), size = 2.5, alpha = 0.8, shape = 17) +
+
+  # 3.4 Separate the four texts and set fixed comparable axes
+  ggplot2::facet_wrap(~ text_label, ncol = 2, scales = "fixed") +
+  ggplot2::scale_x_continuous(breaks = c(0, 0.5, 1), limits = c(0, 1)) +
+  ggplot2::scale_y_continuous(limits = c(-0.1, 1), breaks = seq(0, 1, 0.2)) +
+
+  # 3.5 Set colours, line types, and theme
+  ggplot2::scale_color_brewer(palette = "Set1") +
+  ggplot2::scale_linetype_manual(values = c("Lexical (y4 Jaccard)" = "solid", "Semantic (x3pcw LSA)" = "dashed")) +
+  ggplot2::guides(colour = "none") +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(
+    legend.position = "bottom", legend.title = ggplot2::element_blank(), panel.grid.minor = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(face = "bold", size = 12),
+    plot.caption = ggplot2::element_text(hjust = 0, margin = ggplot2::margin(t = 8)),
+    plot.margin = ggplot2::margin(t = 10, r = 15, b = 12, l = 15)
+  ) +
+
+  # 3.6 Add methodological labels and definitions
+  ggplot2::labs(
+    title = "Lexical vs. Latent Semantic Continuity across Paragraph Transitions",
+    subtitle = "Solid lines show exact content-lemma recurrence (y4); dashed lines show semantic Topic Continuity (x3pcw)",
+    x = "Normalized paragraph-transition position", y = "Observed continuity: cosine/lexical mass handover", linetype = NULL,
+    caption = stringr::str_wrap(
+      paste0(
+        "y4 is the Jaccard proportion of exactly recurring content lemmas; ",
+        "x3pcw is cosine similarity in the actual-LSA space. ",
+        "Their raw magnitudes are not conceptually equivalent; the overlay ",
+        "compares their within-text wave shapes and divergence. ",
+        "The black dotted line marks the sample-relative x3pcw Point d’Or ",
+        "reference: the highest observed x3pcw text mean (",
+        formatC(point_dor_level, digits = 4, format = "f"),
+        "), projected with a gradient of 0."
+      ),
+      width = 110
+    )
+  )
+
+# 4. Save and display the final combined plot
+ggplot2::ggsave(filename = combined_wave_plot_path, plot = modul_6_combined_continuity_waves, width = 9, height = 7, dpi = 300)
+modul_6_combined_continuity_waves
+
+
+
+
+
+
+
+ 
+ 
+  
+   
+
+```
+
+
+#
+
+```{r}
+stopifnot(file.exists(combined_wave_plot_path))
+message("Plot saved to: ", combined_wave_plot_path)
+```
+
+
+# # # MODUL 6.39 — Calculate title-based x4 similarities
+
+```{r}
+# MODUL 6.39 — Calculate title-based x4 similarities
+
+main_title_id <- all_target_segments |>
+  dplyr::filter(segment_level == "main_title") |>
+  dplyr::pull(segment_id)
+
+subheading_lookup <- all_target_segments |>
+  dplyr::filter(segment_level == "subheading") |>
+  dplyr::arrange(segment_order) |>
+  dplyr::transmute(
+    section_id = dplyr::row_number(),
+    subheading_segment_id = segment_id
+  )
+
+stopifnot(length(main_title_id) == 1L, nrow(subheading_lookup) == 3L)
+
+segment_cosine <- function(id_1, id_2) {
+  vector_1 <- target_segment_vectors[id_1, , drop = TRUE]
+  vector_2 <- target_segment_vectors[id_2, , drop = TRUE]
+  if (anyNA(vector_1) || anyNA(vector_2)) NA_real_ else sum(vector_1 * vector_2)
+}
+
+x4_title_pairs <- all_target_segments |>
+  dplyr::filter(segment_level %in% c("sentence", "paragraph", "whole_body_text")) |>
+  dplyr::mutate(
+    cosine_similarity = purrr::map_dbl(segment_id, ~ segment_cosine(.x, main_title_id))
+  )
+
+x4_title_profiles <- x4_title_pairs |>
+  dplyr::group_by(text_id, model, segment_level) |>
+  dplyr::summarise(similarity = mean(cosine_similarity), .groups = "drop") |>
+  dplyr::mutate(
+    measure = dplyr::recode(
+      segment_level,
+      sentence = "x4_sentence_title_similarity_mean",
+      paragraph = "x4_paragraph_title_similarity_mean",
+      whole_body_text = "x4_text_title_similarity"
+    )
+  ) |>
+  dplyr::select(-segment_level) |>
+  tidyr::pivot_wider(names_from = measure, values_from = similarity)
+
+prompt_subheading_title_pairs <- subheading_lookup |>
+  dplyr::mutate(
+    cosine_similarity = purrr::map_dbl(
+      subheading_segment_id,
+      ~ segment_cosine(.x, main_title_id)
+    )
+  )
+
+prompt_subheading_title_baseline <- prompt_subheading_title_pairs |>
+  dplyr::summarise(
+    prompt_subheading_title_similarity_mean = mean(cosine_similarity)
+  )
+
+x4_title_profiles
+prompt_subheading_title_baseline
+```
+# Note: Sentence → title mean
+Each body sentence was compared with the shared main-title vector using cosine similarity. The sentence similarities were then averaged separately for each text.
+Paragraph → title mean
+Each original body paragraph was compared with the same main-title vector. The paragraph similarities were then averaged separately for each text.
+Whole text → title
+The complete body text was represented by one LSA vector and compared once with the main-title vector. Therefore, this is a single cosine similarity, not a mean of sentence or paragraph values.
+
+#
+
+```{r}
+# MODUL 6.39a — Calculate merged-section-to-subheading similarities
+
+x4_section_segments <- paragraph_segment_table |>
+  dplyr::arrange(text_id, section_id, paragraph_number) |>
+  dplyr::group_by(text_id, model, section_id) |>
+  dplyr::summarise(
+    n_paragraphs = dplyr::n(),
+    lsa_lemma_text = paste(lsa_lemma_text, collapse = " "),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    section_segment_id = paste0(text_id, "_X4_SECTION_", section_id)
+  ) |>
+  dplyr::left_join(
+    subheading_lookup,
+    by = "section_id"
+  )
+
+section_dfm <- quanteda::dfm(
+  quanteda::tokens(
+    stats::setNames(
+      x4_section_segments$lsa_lemma_text,
+      x4_section_segments$section_segment_id
+    ),
+    what = "fastestword"
+  )
+) |>
+  quanteda::dfm_match(features = lsa_reference_space$vocabulary)
+
+section_matrix <- methods::as(section_dfm, "dgCMatrix")
+section_matrix@x <- log1p(section_matrix@x)
+
+x4_section_vectors <- as.matrix(
+  section_matrix %*%
+    Matrix::Diagonal(x = lsa_reference_space$idf) %*%
+    lsa_reference_space$right_singular_vectors %*%
+    Matrix::Diagonal(x = 1 / lsa_reference_space$singular_values)
+)
+
+section_norms <- sqrt(rowSums(x4_section_vectors^2))
+x4_section_vectors <- sweep(x4_section_vectors, 1, section_norms, "/")
+x4_section_vectors[!is.finite(x4_section_vectors)] <- NA_real_
+
+section_cosine <- function(section_id, subheading_id) {
+  section_vector <- x4_section_vectors[section_id, , drop = TRUE]
+  subheading_vector <- target_segment_vectors[subheading_id, , drop = TRUE]
+  if (anyNA(section_vector) || anyNA(subheading_vector)) NA_real_
+  else sum(section_vector * subheading_vector)
+}
+
+x4_section_subheading_pairs <- x4_section_segments |>
+  dplyr::mutate(
+    cosine_similarity = purrr::map2_dbl(
+      section_segment_id,
+      subheading_segment_id,
+      section_cosine
+    )
+  )
+
+x4_subheading_profiles <- x4_section_subheading_pairs |>
+  dplyr::group_by(text_id, model) |>
+  dplyr::summarise(
+    n_sections_scored = dplyr::n_distinct(section_id),
+    section_similarity_mean = mean(cosine_similarity),
+    .groups = "drop"
+  ) |>
+  dplyr::left_join(
+    structural_audit |>
+      dplyr::select(text_id, section_mapping_valid),
+    by = "text_id"
+  ) |>
+  dplyr::mutate(
+    x4_paragraph_subheading_similarity_mean = dplyr::if_else(
+      section_mapping_valid & n_sections_scored == 3L,
+      section_similarity_mean,
+      NA_real_
+    )
+  ) |>
+  dplyr::select(
+    text_id,
+    model,
+    x4_paragraph_subheading_similarity_mean,
+    n_sections_scored,
+    section_mapping_valid
+  )
+
+x4_section_subheading_pairs
+x4_subheading_profiles
+```
+# Note: Main new measure - x4_paragraph_subheading_similarity_mean -> For each text:
+
+merged Section 1 was compared with Subheading 1;
+merged Section 2 was compared with Subheading 2;
+merged Section 3 was compared with Subheading 3; the three cosine similarities were averaged equally. 
+
+Section 1 → Subheading 1 = s1
+Section 2 → Subheading 2 = s2
+Section 3 → Subheading 3 = s3
+
+Each comparison contributes exactly one third to the final value:=> s1+s2+s3/3
+
+Caveat note:The paragraph-to-subheading similarity should be interpreted cautiously because the subheadings may have been added after the body text had already been written. 
+
+(In that case, the measure captures the retrospective semantic fit between each section and its assigned subheading, rather than necessarily showing whether the text was originally developed in response to/toward that subheading.)
+#
+
+```{r}
+stopifnot(
+  all(c(
+    "text_id",
+    "model",
+    "section_id",
+    "section_segment_id",
+    "subheading_segment_id"
+  ) %in% names(x4_section_segments))
+)
+
+print(x4_section_segments, n = Inf, width = Inf)
+```
+
+
+# MODUL 6.39b — Assemble, freeze, and validate title and subheading x4
+
+```{r}
+
+# MODUL 6.39b — Assemble, freeze, and validate title and subheading x4
+
+x4_output_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x4_title_subheading.rds"
+)
+
+x4_title_subheading_profiles <- x4_title_profiles |>
+  dplyr::left_join(
+    x4_subheading_profiles,
+    by = c("text_id", "model")
+  ) |>
+  dplyr::arrange(text_id)
+
+x4_title_subheading_bundle <- list(
+  title_pairs = x4_title_pairs,
+  section_segments = x4_section_segments,
+  section_vectors = x4_section_vectors,
+  section_subheading_pairs = x4_section_subheading_pairs,
+  profiles = x4_title_subheading_profiles,
+  prompt_baseline_pairs = prompt_subheading_title_pairs,
+  prompt_baseline = prompt_subheading_title_baseline
+)
+
+saveRDS(x4_title_subheading_bundle, x4_output_path, version = 3)
+x4_title_subheading_bundle <- readRDS(x4_output_path)
+
+x4_title_subheading_profiles <- x4_title_subheading_bundle$profiles
+prompt_subheading_title_baseline <- x4_title_subheading_bundle$prompt_baseline
+
+stopifnot(
+  nrow(x4_title_subheading_profiles) == 4L,
+  nrow(x4_title_subheading_bundle$title_pairs) == 125L,
+  nrow(x4_title_subheading_bundle$prompt_baseline_pairs) == 3L,
+  all(
+    x4_title_subheading_profiles$section_mapping_valid |
+      is.na(
+        x4_title_subheading_profiles$
+          x4_paragraph_subheading_similarity_mean
+      )
+  )
+)
+
+readr::write_csv(
+  x4_title_subheading_profiles,
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_x4_title_subheading_profiles.csv"
+  )
+)
+
+message("MODUL 6.39 title and subheading x4 outputs frozen and reloaded.")
+
+print(x4_title_subheading_profiles, n = Inf, width = Inf)
+print(prompt_subheading_title_baseline, width = Inf)
+```
+# Note: These numbers say, how well each model and the human baseline “sticks to its own headings” at different structural levels. Interpreting the columns as LSA‑based semantic similarity between each unit and its title (higher = more on‑topic):
+
+Whole text → title: All four have the highest values here (0.26–0.46), so at the macro level every text broadly fits its overall title. The human text is strongest (0.4571), followed by Claude, then ChatGPT, with Gemini lowest.
+
+Paragraph → title/ subtitle: Again, the human text is at or near the top (0.3191 paragraph, 0.0317 subheading; note that the subheading value is small for everyone), with Claude and ChatGPT close behind and Gemini consistently lower. This suggests that human paragraphs and sections are more tightly semantically aligned with their titles than the LM ones, especially compared to Gemini.
+
+Sentence → title: At the micro level, ChatGPT (0.1551) and the human text (0.1375) are quite close, with Claude slightly lower and Gemini lowest. That is, individual human and ChatGPT sentences are more semantically related to the text title than Claude’s or Gemini’s are.
+
+Put simply: across all structural levels, the human text shows the strongest and most consistent semantic anchoring to its titles, Claude is generally next, ChatGPT slightly behind but still reasonably aligned, and Gemini is weakest, especially at the paragraph, whole‑text, and sentence levels. This supports the view that humans keep their discourse more tightly organised around the announced topics, while Gemini didn't manage to stick to the prompted headings.
+# ===========================================================
+
+# MODUL 6.40a — Load and validate frozen seed-word inputs
+
+```{r}
+actual_lsa_output_dir <- file.path("..", "measure_outputs")
+
+expected_seed_words <- readLines(
+  file.path("..", "seeds", "seed_words_every_9th_text1_hm.txt"),
+  encoding = "UTF-8",
+  warn = FALSE
+)
+
+all_lemma_annotation_layer <- readRDS(
+  file.path("..", "data_prep_CCP_output", "current_texts_parsed.rds")
+)
+
+actual_lsa_reference_space <- readRDS(
+  file.path(
+    actual_lsa_output_dir,
+    "modul_6_actual_lsa_reference_space.rds"
+  )
+)
+
+lsa_pos_keep <- c(
+  "NOUN", "PROPN", "VERB", "ADJ",
+  "ADV", "CCONJ", "SCONJ"
+)
+
+stopifnot(
+  length(expected_seed_words) == 61L,
+  file.exists(
+    file.path(
+      actual_lsa_output_dir,
+      "modul_6_actual_lsa_reference_space.rds"
+    )
+  )
+)
+tibble::tibble(
+  frozen_input = c(
+    "Expected seed words",
+    "All-lemma annotations",
+    "Actual-LSA vocabulary",
+    "Retained UPOS categories"
+  ),
+  n = c(
+    length(expected_seed_words),
+    nrow(all_lemma_annotation_layer),
+    length(actual_lsa_reference_space$vocabulary),
+    length(lsa_pos_keep)
+  )
+)
+```
+
+
+# MODUL 6.40b — Prepare expected seed-word and annotation layers
+
+```{r}
+
+# MODUL 6.40b — Prepare expected seed-word and annotation layers
+
+normalize_sw <- function(x) {
+  x |>
+    as.character() |>
+    stringr::str_to_lower() |>
+    stringr::str_squish() |>
+    stringr::str_replace_all("\\*", "") |>
+    stringr::str_replace_all("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$", "")
+}
+
+sw_expected <- tibble::tibble(
+  sw_position = seq_along(expected_seed_words),
+  expected_seed_word = expected_seed_words,
+  expected_seed_word_norm = normalize_sw(expected_seed_words)
+)
+
+sw_annotation <- all_lemma_annotation_layer |>
+  dplyr::arrange(text_id, paragraph_id, sentence_id, as.integer(token_id)) |>
+  dplyr::group_by(text_id) |>
+  dplyr::mutate(token_position = dplyr::row_number()) |>
+  dplyr::ungroup() |>
+  dplyr::transmute(
+    text_id,
+    model = dplyr::case_when(
+      text_id == "HUMAN_BASELINE_001" ~ "Human",
+      stringr::str_detect(text_id, "CHATGPT") ~ "ChatGPT",
+      stringr::str_detect(text_id, "CLAUDE") ~ "Claude",
+      TRUE ~ NA_character_
+    ),
+    paragraph_id,
+    sentence_id,
+    token_id,
+    token_position,
+    token,
+    token_norm = normalize_sw(token),
+    lemma = normalize_sw(lemma),
+    pos = stringr::str_to_upper(as.character(pos))
+  ) |>
+  dplyr::filter(model %in% c("ChatGPT", "Claude", "Human"))
+
+stopifnot(
+  nrow(sw_expected) == 61L,
+  setequal(unique(sw_annotation$model), c("ChatGPT", "Claude", "Human")),
+  all(c("lemma", "pos") %in% names(sw_annotation))
+)
+
+tibble::tibble(
+  layer = c("Expected seed words", "Retained annotation rows"),
+  n = c(nrow(sw_expected), nrow(sw_annotation))
+)
+    
+```
+
+
+# MODUL 6.40c — Calculate expected seed-word diagnostics
+
+```{r}
+
+# MODUL 6.40c — Calculate expected seed-word diagnostics
+
+sw_expected_match <- sw_expected |>
+  dplyr::group_by(expected_seed_word_norm) |>
+  dplyr::mutate(sw_occurrence = dplyr::row_number()) |>
+  dplyr::ungroup()
+
+sw_annotation_match <- sw_annotation |>
+  dplyr::group_by(text_id, token_norm) |>
+  dplyr::mutate(sw_occurrence = dplyr::row_number()) |>
+  dplyr::ungroup()
+
+expected_seed_word_rows <- tidyr::crossing(
+  sw_annotation |> dplyr::distinct(text_id, model),
+  sw_expected_match
+) |>
+  dplyr::left_join(
+    sw_annotation_match |>
+      dplyr::select(text_id, token_norm, sw_occurrence, token_position, token, lemma, pos),
+    by = c("text_id", "expected_seed_word_norm" = "token_norm", "sw_occurrence")
+  ) |>
+  dplyr::mutate(
+    sw_detected = !is.na(token_position),
+    sw_annotated = sw_detected & !is.na(lemma) & !is.na(pos),
+    sw_lsa_relevant = sw_annotated & pos %in% lsa_pos_keep,
+    sw_in_model = sw_lsa_relevant & lemma %in% actual_lsa_reference_space$vocabulary,
+    sw_oov = sw_lsa_relevant & !sw_in_model
+  ) |>
+  dplyr::arrange(text_id, sw_position)
+
+expected_seed_word_diagnostics <- expected_seed_word_rows |>
+  dplyr::filter(model %in% c("ChatGPT", "Claude")) |>
+  dplyr::group_by(text_id, model) |>
+  dplyr::summarise(
+    n_sw_expected = dplyr::n(),
+    n_sw_detected = sum(sw_detected),
+    n_sw_annotated = sum(sw_annotated),
+    n_sw_in_model = sum(sw_in_model),
+    n_sw_oov = sum(sw_oov),
+    .groups = "drop"
+  )
+
+human_seed_words_in_model <- expected_seed_word_rows |>
+  dplyr::filter(model == "Human", sw_in_model) |>
+  dplyr::select(sw_position, expected_seed_word, token_position, lemma, pos)
+
+stopifnot(
+  nrow(expected_seed_word_rows) == 183L,
+  nrow(expected_seed_word_diagnostics) == 2L,
+  all(expected_seed_word_diagnostics$n_sw_expected == 61L),
+  sum(expected_seed_word_rows$sw_detected[expected_seed_word_rows$model == "Human"]) == 61L
+)
+
+expected_seed_word_diagnostics |>
+  dplyr::mutate(
+    dplyr::across(
+      c(n_sw_detected, n_sw_annotated, n_sw_in_model, n_sw_oov),
+      \(x) paste0(x, " / 61")
+    )
+  )
+```
+
+#
+
+```{r}
+
+```
+
+
+
+# MODUL 6.40e — Freeze and reload x4 seed-word diagnostics
+This freezes the complete reusable MODUL 6.40 bundle. The diagnostics table later enters the x4-associated profile, while human_seed_words_in_model supplies the Human-derived seed associative net component for MODUL 6.41.
+
+```{r}
+# MODUL 6.40e — Freeze and reload x4 seed-word diagnostics
+
+expected_seed_word_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x4_expected_seed_word_diagnostics.rds"
+)
+
+expected_seed_word_bundle <- list(
+  rows = expected_seed_word_rows |>
+    dplyr::filter(model %in% c("ChatGPT", "Claude")),
+  diagnostics = expected_seed_word_diagnostics,
+  human_seed_words_in_model = human_seed_words_in_model
+)
+
+saveRDS(expected_seed_word_bundle, expected_seed_word_path)
+expected_seed_word_bundle <- readRDS(expected_seed_word_path)
+
+expected_seed_word_rows <- expected_seed_word_bundle$rows
+expected_seed_word_diagnostics <- expected_seed_word_bundle$diagnostics
+human_seed_words_in_model <- expected_seed_word_bundle$human_seed_words_in_model
+
+stopifnot(
+  nrow(expected_seed_word_rows) == 122L,
+  nrow(expected_seed_word_diagnostics) == 2L,
+  all(expected_seed_word_diagnostics$n_sw_expected == 61L),
+  nrow(human_seed_words_in_model) > 0L,
+  all(human_seed_words_in_model$pos %in% lsa_pos_keep),
+  all(human_seed_words_in_model$lemma %in% actual_lsa_reference_space$vocabulary)
+)
+
+expected_seed_word_diagnostics |>
+  dplyr::mutate(
+    dplyr::across(
+      c(n_sw_detected, n_sw_annotated, n_sw_in_model, n_sw_oov),
+      \(x) paste0(x, " / 61")
+    )
+  ) |>
+  print(n = Inf)
+
+message("Expected seed-word diagnostics frozen and reloaded successfully.")
+```
+# Meaning of the MODUL 6.40 diagnostics
+n_sw_expected: all 61 seed-word occurrences prescribed by the prompt.
+n_sw_detected: prescribed seed-word occurrences actually found in the text.
+n_sw_annotated: detected occurrences with both lemma and POS annotation.
+n_sw_in_model: detected and annotated occurrences with an eligible POS whose lemma exists in the actual-LSA vocabulary. These exact rows can form the seed vector.
+n_sw_oov: detected and LSA-relevant occurrences whose lemmas are outside the actual-LSA vocabulary.
+# Note: 
+n_sw_detected is used within MODUL 6.40 as an exploratory x4-associated diagnostic of expected seed-word presence. The retained values are 48/61 for ChatGPT and 50/61 for Claude. Gemini is excluded because retained Markdown emphasis markers systematically corrupted parts of its token and POS annotation. The Human baseline is excluded from the comparative diagnostic because it is the source of the expected seed-word list and supplies the Human-derived seed component for MODUL 6.41. n_sw_detected remains separate from x4_text_prompt_induced_ass_net_similarity and must not be averaged with or added to the cosine score calculated in MODUL 6.42. During final integration, values are available only for ChatGPT and Claude; Gemini and Human should remain missing for this diagnostic, with their respective exclusion reasons documented.
+# Because n_sw_detected equals n_sw_annotated for both models, there is no annotation failure among the detected words. Instead:
+
+ChatGPT omitted 13 required seed-word occurrences.
+Claude omitted 11 required seed-word occurrences.
+Of the detected words, only 25 and 27 respectively can enter the actual-LSA vector because the remaining detected words have excluded POS categories or are OOV.
+# ===================================
+
+# MODUL 6.41a — Construct and freeze the Human-derived prompt-induced associative net
+
+```{r}
+# MODUL 6.41a — Construct and freeze the Human-derived prompt-induced associative net
+
+prompt_induced_ass_net_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_prompt_induced_associative_net.rds"
+)
+
+# 1. Reload the frozen Human seed component
+
+expected_seed_word_bundle <- readRDS(file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x4_expected_seed_word_diagnostics.rds"
+))
+
+human_seed_words_in_model <- expected_seed_word_bundle$human_seed_words_in_model
+
+stopifnot(
+  is.data.frame(human_seed_words_in_model),
+  "lemma" %in% names(human_seed_words_in_model),
+  nrow(human_seed_words_in_model) > 0L
+)
+
+# 2. Use the validated heading lemmas
+
+heading_terms <- c(
+  "digitalisierung", "arbeitswelt",
+  "digitalisierung", "sorge", "arbeitsplatz",
+  "fortschritt", "erfordern", "anpassung",
+  "menschlich", "qualität", "erfolgreich", "zukunft"
+)
+
+human_seed_terms <- human_seed_words_in_model |>
+  dplyr::pull(lemma) |>
+  as.character() |>
+  stringr::str_to_lower() |>
+  stringr::str_squish()
+
+stopifnot(
+  !anyNA(human_seed_terms),
+  all(human_seed_terms != ""),
+  all(human_seed_terms %in% actual_lsa_reference_space$vocabulary)
+)
+
+# 3. Combine headings and Human seed lemmas before projection
+
+prompt_induced_ass_net_terms <- c(heading_terms, human_seed_terms)
+
+prompt_induced_ass_net_dfm <- quanteda::tokens(c(
+  prompt_induced_associative_net =
+    paste(prompt_induced_ass_net_terms, collapse = " ")
+)) |>
+  quanteda::dfm() |>
+  quanteda::dfm_match(features = actual_lsa_reference_space$vocabulary) |>
+  methods::as("dgCMatrix")
+
+n_prompt_terms_in_model <- as.integer(sum(prompt_induced_ass_net_dfm))
+
+# 4. Apply one log-TF-IDF actual-LSA projection
+
+prompt_induced_ass_net_dfm@x <- log1p(prompt_induced_ass_net_dfm@x)
+
+prompt_induced_ass_net_tfidf <- prompt_induced_ass_net_dfm %*%
+  Matrix::Diagonal(x = actual_lsa_reference_space$idf)
+
+prompt_fold_in_matrix <- actual_lsa_reference_space$right_singular_vectors %*%
+  Matrix::Diagonal(x = 1 / actual_lsa_reference_space$singular_values)
+
+prompt_induced_associative_net_raw <- as.numeric(
+  prompt_induced_ass_net_tfidf %*% prompt_fold_in_matrix
+)
+
+prompt_induced_ass_net_raw_norm <- sqrt(
+  sum(prompt_induced_associative_net_raw^2)
+)
+
+stopifnot(
+  is.finite(prompt_induced_ass_net_raw_norm),
+  prompt_induced_ass_net_raw_norm > 0
+)
+
+prompt_induced_associative_net <- prompt_induced_associative_net_raw /
+  prompt_induced_ass_net_raw_norm
+
+# 5. Audit and freeze
+
+prompt_induced_ass_net_audit <- tibble::tibble(
+  reference = "Human-derived heading and seed-word associative net",
+  t_subheadings_bag = length(heading_terms),
+  sw_bag = length(human_seed_terms),
+  assoc_net_bag = length(prompt_induced_ass_net_terms),
+  assoc_net_lsa = n_prompt_terms_in_model,
+  assoc_net_oov = length(prompt_induced_ass_net_terms) - n_prompt_terms_in_model,
+  lsa_dimensions = length(prompt_induced_associative_net),
+  hum_fix_assoc_net_l2_norm = sqrt(sum(prompt_induced_associative_net^2))
+)
+
+prompt_induced_ass_net_bundle <- list(
+  heading_terms = heading_terms,
+  human_seed_words_in_model = human_seed_words_in_model,
+  human_seed_terms = human_seed_terms,
+  pooled_terms = prompt_induced_ass_net_terms,
+  vector = prompt_induced_associative_net,
+  audit = prompt_induced_ass_net_audit
+)
+
+saveRDS(prompt_induced_ass_net_bundle, prompt_induced_ass_net_path)
+
+# 6. Reload and validate
+
+prompt_induced_ass_net_bundle <- readRDS(prompt_induced_ass_net_path)
+prompt_induced_associative_net <- prompt_induced_ass_net_bundle$vector
+prompt_induced_ass_net_audit <- prompt_induced_ass_net_bundle$audit
+
+stopifnot(
+  length(prompt_induced_associative_net) == 50L,
+  all(is.finite(prompt_induced_associative_net)),
+  abs(sum(prompt_induced_associative_net^2) - 1) < 1e-10
+)
+
+print(prompt_induced_ass_net_audit, n = Inf, width = Inf)
+
+message(
+  "Human-derived prompt-induced associative net frozen and reloaded successfully."
+)
+```
+
+# MODUL 6.41b — Assemble the ChatGPT and Claude associative-net bags
+
+```{r}
+# MODUL 6.41b — Assemble the ChatGPT and Claude associative-net bags
+
+
+
+chatgpt_assoc_net_bag <- c(
+  heading_terms,
+  expected_seed_word_bundle$rows |>
+    dplyr::filter(model == "ChatGPT", sw_in_model) |>
+    dplyr::pull(lemma) |>
+    as.character() |>
+    stringr::str_to_lower() |>
+    stringr::str_squish()
+)
+
+claude_assoc_net_bag <- c(
+  heading_terms,
+  expected_seed_word_bundle$rows |>
+    dplyr::filter(model == "Claude", sw_in_model) |>
+    dplyr::pull(lemma) |>
+    as.character() |>
+    stringr::str_to_lower() |>
+    stringr::str_squish()
+)
+
+stopifnot(
+  length(chatgpt_assoc_net_bag) == 37L,
+  length(claude_assoc_net_bag) == 39L,
+  all(chatgpt_assoc_net_bag[-seq_along(heading_terms)] %in% actual_lsa_reference_space$vocabulary),
+  all(claude_assoc_net_bag[-seq_along(heading_terms)] %in% actual_lsa_reference_space$vocabulary)
+)
+
+print(c(
+  chatgpt_assoc_net_bag = length(chatgpt_assoc_net_bag),
+  claude_assoc_net_bag = length(claude_assoc_net_bag)
+))
+```
+
+# Inspection =  object names overview
+
+```{r}
+names(expected_seed_word_bundle)
+
+utils::str(
+  expected_seed_word_bundle,
+  max.level = 3,
+  list.len = 100
+)
+```
+
+# MODUL 6.41c — Project and normalize the ChatGPT and Claude associative nets
+
+```{r}
+# MODUL 6.41c — Project and normalize the ChatGPT and Claude associative nets
+
+lm_assoc_net_dfm <- quanteda::tokens(c(
+  ChatGPT = paste(chatgpt_assoc_net_bag, collapse = " "),
+  Claude = paste(claude_assoc_net_bag, collapse = " ")
+)) |>
+  quanteda::dfm() |>
+  quanteda::dfm_match(features = actual_lsa_reference_space$vocabulary) |>
+  methods::as("dgCMatrix")
+
+lm_assoc_net_dfm@x <- log1p(lm_assoc_net_dfm@x)
+
+lm_assoc_net_raw <- as.matrix(
+  lm_assoc_net_dfm %*%
+    Matrix::Diagonal(x = actual_lsa_reference_space$idf) %*%
+    prompt_fold_in_matrix
+)
+
+lm_assoc_net_raw <- lm_assoc_net_raw / sqrt(rowSums(lm_assoc_net_raw^2))
+
+ChatGPT_assoc_net_vector <- as.numeric(lm_assoc_net_raw["ChatGPT", ])
+Claude_assoc_net_vector <- as.numeric(lm_assoc_net_raw["Claude", ])
+ChatGPT_assoc_net_l2_norm <- sqrt(sum(ChatGPT_assoc_net_vector^2))
+Claude_assoc_net_l2_norm <- sqrt(sum(Claude_assoc_net_vector^2))
+
+stopifnot(
+  length(ChatGPT_assoc_net_vector) == 50L,
+  length(Claude_assoc_net_vector) == 50L,
+  abs(ChatGPT_assoc_net_l2_norm - 1) < 1e-10,
+  abs(Claude_assoc_net_l2_norm - 1) < 1e-10
+)
+
+print(c(
+  ChatGPT_assoc_net_l2_norm = ChatGPT_assoc_net_l2_norm,
+  Claude_assoc_net_l2_norm = Claude_assoc_net_l2_norm
+))
+```
+
+# MODUL 6.41d — Audit, freeze, and reload the three associative nets
+
+```{r}
+# MODUL 6.41d — Audit, freeze, and reload the three associative nets
+
+prompt_induced_ass_net_bundle$chatgpt_assoc_net_bag <- chatgpt_assoc_net_bag
+prompt_induced_ass_net_bundle$claude_assoc_net_bag <- claude_assoc_net_bag
+prompt_induced_ass_net_bundle$ChatGPT_assoc_net_vector <- ChatGPT_assoc_net_vector
+prompt_induced_ass_net_bundle$Claude_assoc_net_vector <- Claude_assoc_net_vector
+prompt_induced_ass_net_bundle$ChatGPT_assoc_net_l2_norm <- ChatGPT_assoc_net_l2_norm
+prompt_induced_ass_net_bundle$Claude_assoc_net_l2_norm <- Claude_assoc_net_l2_norm
+
+prompt_induced_ass_net_bundle$audit <- prompt_induced_ass_net_bundle$audit |>
+  dplyr::mutate(
+    chatgpt_assoc_net_bag = length(.env$chatgpt_assoc_net_bag),
+    claude_assoc_net_bag = length(.env$claude_assoc_net_bag),
+    ChatGPT_assoc_net_l2_norm = .env$ChatGPT_assoc_net_l2_norm,
+    Claude_assoc_net_l2_norm = .env$Claude_assoc_net_l2_norm
+  )
+
+saveRDS(prompt_induced_ass_net_bundle, prompt_induced_ass_net_path)
+prompt_induced_ass_net_bundle <- readRDS(prompt_induced_ass_net_path)
+
+prompt_induced_associative_net <- prompt_induced_ass_net_bundle$vector
+ChatGPT_assoc_net_vector <- prompt_induced_ass_net_bundle$ChatGPT_assoc_net_vector
+Claude_assoc_net_vector <- prompt_induced_ass_net_bundle$Claude_assoc_net_vector
+prompt_induced_ass_net_audit <- prompt_induced_ass_net_bundle$audit
+
+stopifnot(
+  all(lengths(list(
+    prompt_induced_associative_net,
+    ChatGPT_assoc_net_vector,
+    Claude_assoc_net_vector
+  )) == 50L),
+  all(abs(c(
+    prompt_induced_ass_net_bundle$hum_fix_assoc_net_l2_norm,
+    prompt_induced_ass_net_bundle$ChatGPT_assoc_net_l2_norm,
+    prompt_induced_ass_net_bundle$Claude_assoc_net_l2_norm
+  ) - 1) < 1e-10)
+)
+
+print(prompt_induced_ass_net_audit, n = Inf, width = Inf)
+message("Human, ChatGPT, and Claude associative nets frozen and reloaded successfully.")
+```
+
+# MODUL 6.41e — Calculate, freeze, and reload associative-net similarities
+
+```{r}
+# MODUL 6.41e — Calculate, freeze, and reload associative-net similarities
+
+chatgpt_human_assoc_net_similarity <- sum(ChatGPT_assoc_net_vector * prompt_induced_associative_net)
+claude_human_assoc_net_similarity <- sum(Claude_assoc_net_vector * prompt_induced_associative_net)
+chatgpt_claude_assoc_net_similarity <- sum(ChatGPT_assoc_net_vector * Claude_assoc_net_vector)
+
+prompt_induced_ass_net_bundle$chatgpt_human_assoc_net_similarity <- chatgpt_human_assoc_net_similarity
+prompt_induced_ass_net_bundle$claude_human_assoc_net_similarity <- claude_human_assoc_net_similarity
+prompt_induced_ass_net_bundle$chatgpt_claude_assoc_net_similarity <- chatgpt_claude_assoc_net_similarity
+
+saveRDS(prompt_induced_ass_net_bundle, prompt_induced_ass_net_path)
+prompt_induced_ass_net_bundle <- readRDS(prompt_induced_ass_net_path)
+
+chatgpt_human_assoc_net_similarity <- prompt_induced_ass_net_bundle$chatgpt_human_assoc_net_similarity
+claude_human_assoc_net_similarity <- prompt_induced_ass_net_bundle$claude_human_assoc_net_similarity
+chatgpt_claude_assoc_net_similarity <- prompt_induced_ass_net_bundle$chatgpt_claude_assoc_net_similarity
+
+tibble::tibble(
+  comparison = c("ChatGPT–Human", "Claude–Human", "ChatGPT–Claude"),
+  associative_net_similarity = c(
+    chatgpt_human_assoc_net_similarity,
+    claude_human_assoc_net_similarity,
+    chatgpt_claude_assoc_net_similarity
+  )
+)
+```
+
+# MODUL 6.41f — Calculate and freeze seed-word-net similarities
+
+```{r}
+
+# MODUL 6.41f — Calculate and freeze seed-word-net similarities
+
+seed_word_net_dfm <- quanteda::tokens(c(
+  Human = paste(prompt_induced_ass_net_bundle$human_seed_terms, collapse = " "),
+  ChatGPT = paste(prompt_induced_ass_net_bundle$chatgpt_assoc_net_bag[-seq_along(prompt_induced_ass_net_bundle$heading_terms)], collapse = " "),
+  Claude = paste(prompt_induced_ass_net_bundle$claude_assoc_net_bag[-seq_along(prompt_induced_ass_net_bundle$heading_terms)], collapse = " ")
+)) |>
+  quanteda::dfm() |>
+  quanteda::dfm_match(features = actual_lsa_reference_space$vocabulary) |>
+  methods::as("dgCMatrix")
+
+stopifnot(
+  Matrix::rowSums(seed_word_net_dfm) == c(Human = 35L, ChatGPT = 25L, Claude = 27L)
+)
+
+seed_word_net_dfm@x <- log1p(seed_word_net_dfm@x)
+
+seed_word_net_vectors <- as.matrix(
+  seed_word_net_dfm %*%
+    Matrix::Diagonal(x = actual_lsa_reference_space$idf) %*%
+    prompt_fold_in_matrix
+)
+
+seed_word_net_vectors <- sweep(
+  seed_word_net_vectors, 1,
+  sqrt(rowSums(seed_word_net_vectors^2)), "/"
+)
+
+seed_word_net_similarities <- tibble::tibble(
+  comparison = c("ChatGPT–Human", "Claude–Human", "ChatGPT–Claude"),
+  seed_word_net_similarity = c(
+    sum(seed_word_net_vectors["ChatGPT", ] * seed_word_net_vectors["Human", ]),
+    sum(seed_word_net_vectors["Claude", ] * seed_word_net_vectors["Human", ]),
+    sum(seed_word_net_vectors["ChatGPT", ] * seed_word_net_vectors["Claude", ])
+  )
+)
+
+prompt_induced_ass_net_bundle$seed_word_net_vectors <- seed_word_net_vectors
+prompt_induced_ass_net_bundle$seed_word_net_similarities <- seed_word_net_similarities
+
+saveRDS(prompt_induced_ass_net_bundle, prompt_induced_ass_net_path)
+prompt_induced_ass_net_bundle <- readRDS(prompt_induced_ass_net_path)
+
+stopifnot(
+  all(abs(sqrt(rowSums(prompt_induced_ass_net_bundle$seed_word_net_vectors^2)) - 1) < 1e-10)
+)
+
+print(prompt_induced_ass_net_bundle$seed_word_net_similarities, n = Inf)
+message("Seed-word-net similarities frozen and reloaded successfully.")
+
+```
+# Note: 
+The seed-word list was fixed at 61 expected seed words for every text. However, not every LM implemented all 61 seed words, resulting in detected seed-word subsets of 48 for ChatGPT and 50 for Claude. In addition, only seed words belonging to the selected LSA categories—NOUN, PROPN, VERB, ADJ, ADV, CCONJ, and SCONJ—could enter the LSA projection, while many function words were excluded by design. The remaining seed words also had to be represented in the frozen actual-LSA vocabulary. Consequently, the final Seed-word nets are based on 35 seed words in model for Human, 25 for ChatGPT, and 27 for Claude. This reduction is therefore mainly due to incomplete LM implementation, POS-based LSA selection, and OOV cases, rather than an additional annotation loss.
+
+# MODUL 6.41g — Calculate and freeze whole-text similarities
+
+```{r}
+# MODUL 6.41g — Calculate and freeze whole-text similarities
+
+whole_text_vectors <- target_segment_vectors[
+  whole_body_text_segment_table$segment_id, , drop = FALSE
+]
+rownames(whole_text_vectors) <- whole_body_text_segment_table$model
+
+whole_text_similarities <- tibble::tibble(
+  comparison = c(
+    "ChatGPT–Human", "Claude–Human", "Gemini–Human",
+    "ChatGPT–Claude", "ChatGPT–Gemini", "Claude–Gemini"
+  ),
+  whole_text_similarity = c(
+    sum(whole_text_vectors["chatgpt_native", ] * whole_text_vectors["human", ]),
+    sum(whole_text_vectors["claude_native", ] * whole_text_vectors["human", ]),
+    sum(whole_text_vectors["gemini_native", ] * whole_text_vectors["human", ]),
+    sum(whole_text_vectors["chatgpt_native", ] * whole_text_vectors["claude_native", ]),
+    sum(whole_text_vectors["chatgpt_native", ] * whole_text_vectors["gemini_native", ]),
+    sum(whole_text_vectors["claude_native", ] * whole_text_vectors["gemini_native", ])
+  )
+)
+
+human_similarity_differences <- tibble::tibble(
+  comparison = c(
+    "ChatGPT–Human vs Claude–Human",
+    "ChatGPT–Human vs Gemini–Human",
+    "Claude–Human vs Gemini–Human"
+  ),
+  whole_text_similarity_difference = c(
+    abs(whole_text_similarities$whole_text_similarity[whole_text_similarities$comparison == "ChatGPT–Human"] -
+          whole_text_similarities$whole_text_similarity[whole_text_similarities$comparison == "Claude–Human"]),
+    abs(whole_text_similarities$whole_text_similarity[whole_text_similarities$comparison == "ChatGPT–Human"] -
+          whole_text_similarities$whole_text_similarity[whole_text_similarities$comparison == "Gemini–Human"]),
+    abs(whole_text_similarities$whole_text_similarity[whole_text_similarities$comparison == "Claude–Human"] -
+          whole_text_similarities$whole_text_similarity[whole_text_similarities$comparison == "Gemini–Human"])
+  )
+)
+
+x4_title_subheading_bundle$whole_text_similarities <- whole_text_similarities
+x4_title_subheading_bundle$human_similarity_differences <- human_similarity_differences
+
+saveRDS(x4_title_subheading_bundle, x4_output_path)
+x4_title_subheading_bundle <- readRDS(x4_output_path)
+
+whole_text_similarities <- x4_title_subheading_bundle$whole_text_similarities
+human_similarity_differences <- x4_title_subheading_bundle$human_similarity_differences
+
+print(whole_text_similarities, n = Inf)
+print(human_similarity_differences, n = Inf)
+message("Whole-text similarities and LM–Human differences frozen and reloaded successfully.")
+```
+# Inspect existing MODUL 6 objects and saved bundle fields
+
+```{r}
+# Inspect existing MODUL 6 objects and saved bundle fields
+
+cat("\n# Current workspace objects\n")
+print(sort(ls(envir = .GlobalEnv)))
+
+cat("\n# Existing MODUL 6 RDS files\n")
+modul_6_rds_files <- list.files(
+  actual_lsa_output_dir,
+  pattern = "\\.rds$",
+  full.names = TRUE
+)
+print(basename(modul_6_rds_files))
+
+cat("\n# Top-level fields in each saved RDS object\n")
+for (path in modul_6_rds_files) {
+  object <- readRDS(path)
+
+  cat("\n", basename(path), "\n", sep = "")
+  cat("Class: ", paste(class(object), collapse = ", "), "\n", sep = "")
+
+  if (!is.null(names(object))) {
+    print(names(object))
+  } else {
+    cat("No named top-level fields.\n")
+  }
+}
+```
+
+#
+
+```{r}
+# MODUL 6.42 — Assemble and freeze final x5 and x6 indices families
+
+# 1. Load the existing source objects
+
+expected_seed_word_source <- readRDS(file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x4_expected_seed_word_diagnostics.rds"
+))
+
+prompt_induced_ass_net_source <- readRDS(file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_prompt_induced_associative_net.rds"
+))
+
+whole_text_source <- readRDS(file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x4_title_subheading.rds"
+))
+
+stopifnot(
+  all(c("n_sw_expected", "n_sw_detected", "n_sw_annotated", "n_sw_in_model", "n_sw_oov") %in%
+        names(expected_seed_word_source$diagnostics)),
+  all(c(
+    "chatgpt_human_assoc_net_similarity",
+    "claude_human_assoc_net_similarity",
+    "chatgpt_claude_assoc_net_similarity",
+    "seed_word_net_similarities"
+  ) %in% names(prompt_induced_ass_net_source)),
+  all(c("whole_text_similarities", "human_similarity_differences") %in%
+        names(whole_text_source)),
+  exists("whole_text_vectors")
+)
+
+# 2. Assemble the final indices families
+
+x5_prompt_compliance_bundle <- list(
+  diagnostics = expected_seed_word_source$diagnostics,
+  chatgpt_human_assoc_net_similarity =
+    prompt_induced_ass_net_source$chatgpt_human_assoc_net_similarity,
+  claude_human_assoc_net_similarity =
+    prompt_induced_ass_net_source$claude_human_assoc_net_similarity,
+  chatgpt_claude_assoc_net_similarity =
+    prompt_induced_ass_net_source$chatgpt_claude_assoc_net_similarity,
+  seed_word_net_similarities =
+    prompt_induced_ass_net_source$seed_word_net_similarities
+)
+
+x6_txts_lsa_sim_bundle <- list(
+  whole_text_similarities = whole_text_source$whole_text_similarities,
+  human_similarity_differences = whole_text_source$human_similarity_differences,
+  whole_text_vectors = whole_text_vectors
+)
+
+# 3. Freeze and reload
+
+x5_prompt_compliance_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x5_prompt_compliance_bundle.rds"
+)
+
+x6_txts_lsa_sim_path <- file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x6_txts_lsa_sim_bundle.rds"
+)
+
+saveRDS(x5_prompt_compliance_bundle, x5_prompt_compliance_path, version = 3)
+saveRDS(x6_txts_lsa_sim_bundle, x6_txts_lsa_sim_path, version = 3)
+
+x5_prompt_compliance_bundle <- readRDS(x5_prompt_compliance_path)
+x6_txts_lsa_sim_bundle <- readRDS(x6_txts_lsa_sim_path)
+
+# 4. Validate the frozen families
+
+stopifnot(
+  identical(
+    names(x5_prompt_compliance_bundle),
+    c(
+      "diagnostics",
+      "chatgpt_human_assoc_net_similarity",
+      "claude_human_assoc_net_similarity",
+      "chatgpt_claude_assoc_net_similarity",
+      "seed_word_net_similarities"
+    )
+  ),
+  identical(
+    names(x6_txts_lsa_sim_bundle),
+    c(
+      "whole_text_similarities",
+      "human_similarity_differences",
+      "whole_text_vectors"
+    )
+  )
+)
+
+message("x5_prompt_compliance and x6_txts_lsa_sim frozen and reloaded successfully.")
+```
+
+
+#
+
+```{r}
+# MODUL 6.43 — Final audit of frozen actual-LSA outputs
+
+# 1. Load the final measure bundles
+
+final_lsa_paths <- c(
+  x3s = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3s_sentence_continuity.rds"),
+  x3p = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3p_paragraph_continuity.rds"),
+  x3pcw = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3pcw_paragraph_continuity.rds"),
+  x3pcw_gradient = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3pcw_topic_continuity_gradient.rds"),
+  x3co = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3co_connector_continuity.rds"),
+  x4 = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x4_title_subheading.rds"),
+  x5_prompt_compliance = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x5_prompt_compliance_bundle.rds"),
+  x6_txts_lsa_sim = file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x6_txts_lsa_sim_bundle.rds")
+)
+
+stopifnot(all(file.exists(final_lsa_paths)))
+final_lsa <- lapply(final_lsa_paths, readRDS)
+
+# 2. Validate the frozen structures
+
+stopifnot(
+  all(c("level", "definition", "sentence_pairs", "profiles") %in% names(final_lsa$x3s)),
+  all(c("level", "definition", "paragraph_pairs", "profiles") %in% names(final_lsa$x3p)),
+  all(c("level", "definition", "pos_keep", "paragraph_segments", "projection", "paragraph_pairs", "profiles") %in% names(final_lsa$x3pcw)),
+  all(c("definition", "paragraph_pairs", "gradient_profiles", "profiles_extended") %in% names(final_lsa$x3pcw_gradient)),
+  all(c("sentence_segments", "projection", "continuity", "summary", "plot_data") %in% names(final_lsa$x3co)),
+  all(c("title_pairs", "section_segments", "section_vectors", "section_subheading_pairs", "profiles", "prompt_baseline_pairs", "prompt_baseline") %in% names(final_lsa$x4)),
+  all(c("diagnostics", "chatgpt_human_assoc_net_similarity", "claude_human_assoc_net_similarity", "chatgpt_claude_assoc_net_similarity", "seed_word_net_similarities") %in% names(final_lsa$x5_prompt_compliance)),
+  identical(names(final_lsa$x6_txts_lsa_sim), c("whole_text_similarities", "human_similarity_differences", "whole_text_vectors"))
+)
+
+# 3. Validate central dimensions and retained values
+
+seed_diagnostics <- final_lsa$x5_prompt_compliance$diagnostics
+seed_detected <- stats::setNames(seed_diagnostics$n_sw_detected, seed_diagnostics$model)
+seed_expected <- stats::setNames(seed_diagnostics$n_sw_expected, seed_diagnostics$model)
+
+stopifnot(
+  nrow(final_lsa$x3s$profiles) == 4L,
+  nrow(final_lsa$x3p$profiles) == 4L,
+  nrow(final_lsa$x3pcw$profiles) == 4L,
+  nrow(final_lsa$x3pcw_gradient$gradient_profiles) == 4L,
+  nrow(final_lsa$x4$profiles) == 4L,
+  nrow(final_lsa$x4$title_pairs) == 125L,
+  nrow(final_lsa$x4$prompt_baseline_pairs) == 3L,
+  seed_expected[["ChatGPT"]] == 61,
+  seed_expected[["Claude"]] == 61,
+  seed_detected[["ChatGPT"]] == 48,
+  seed_detected[["Claude"]] == 50,
+  nrow(final_lsa$x5_prompt_compliance$seed_word_net_similarities) == 3L,
+  nrow(final_lsa$x6_txts_lsa_sim$whole_text_similarities) == 6L,
+  nrow(final_lsa$x6_txts_lsa_sim$human_similarity_differences) == 3L,
+  nrow(final_lsa$x6_txts_lsa_sim$whole_text_vectors) == 4L,
+  ncol(final_lsa$x6_txts_lsa_sim$whole_text_vectors) == 50L
+)
+
+# 4. Freeze the final audit
+
+final_lsa_audit <- tibble::tibble(
+  indices_family = names(final_lsa_paths),
+  frozen_file = basename(final_lsa_paths),
+  file_size_bytes = unname(file.info(final_lsa_paths)$size),
+  status = "PASS"
+)
+
+saveRDS(final_lsa_audit, file.path(actual_lsa_output_dir, "modul_6_actual_lsa_final_audit.rds"), version = 3)
+readr::write_csv(final_lsa_audit, file.path(actual_lsa_output_dir, "modul_6_actual_lsa_final_audit.csv"))
+
+print(final_lsa_audit, n = Inf)
+message("MODUL 6 final frozen-output audit passed.")
+```
+
+
+
+
+
+

@@ -1,0 +1,15 @@
+source_path,target_path,role,source_exists,target_exists,frozen_date,target_file_size_bytes,target_md5
+data_clean/l1_corpus_clean.rds,data_prep_CCP_output/l1_corpus_clean.rds,Clean L1-Corpus reference space for PMI/MI plausibility licensing,TRUE,TRUE,2026-07-09,238284,ca4b1e764865e56709f7ee103fb3b682
+data_clean/human_baseline_clean.rds,data_prep_CCP_output/human_baseline_clean.rds,Frozen human baseline text,TRUE,TRUE,2026-07-09,2217,36e8a75dc41166aa49dd9cebcb612360
+data_clean/basic_texts_clean.rds,data_prep_CCP_output/basic_texts_clean.rds,Frozen LLM reconstruction texts,TRUE,TRUE,2026-07-09,4251,62bd00177055dcb38014de7af3fd9e5a
+data_clean/current_paragraph_layer.rds,data_prep_CCP_output/current_paragraph_layer.rds,Paragraph-preserving layer for y4 paragraph overlap,TRUE,TRUE,2026-07-09,5847,500a1b4914a45f22cca2de127b492919
+measure_outputs/current_texts_parsed.rds,data_prep_CCP_output/current_texts_parsed.rds,Token-level parsed layer from MODUL 5a,TRUE,TRUE,2026-07-09,19118,df582f0ad41a08a2fa76fd82853d0fa4
+measure_outputs/parsed_S_layer.rds,data_prep_CCP_output/parsed_S_layer.rds,Sentence-level parsed layer from MODUL 5a,TRUE,TRUE,2026-07-09,12452,2d2f7f5b346e6330848352fc3d6af061
+measure_outputs/ims_psychometric_lexicon_clean.rds,data_prep_CCP_output/ims_psychometric_lexicon_clean.rds,"Clean IMS psychometric lexicon with concreteness, imageability, and abstractness proxy",TRUE,TRUE,2026-07-09,4952281,76ce74746006d45626f05fe2700eb20f
+measure_outputs/ims_psychometric_lexicon_clean.csv,data_prep_CCP_output/ims_psychometric_lexicon_clean.csv,CSV version of clean IMS psychometric lexicon,TRUE,TRUE,2026-07-09,13446742,a396c397e76007e72aedc3600b188d47
+measure_outputs/ims_dictionary_concreteness.rds,data_prep_CCP_output/ims_dictionary_concreteness.rds,Lemma-level IMS concreteness dictionary,TRUE,TRUE,2026-07-09,2570971,2a6d74bf8ed8d6bcd69eaf5b777c6ba1
+measure_outputs/ims_dictionary_concreteness.csv,data_prep_CCP_output/ims_dictionary_concreteness.csv,CSV version of IMS concreteness dictionary,TRUE,TRUE,2026-07-09,6934406,03913559abfa6c44789cce8f1af24210
+measure_outputs/ims_dictionary_imageability.rds,data_prep_CCP_output/ims_dictionary_imageability.rds,Lemma-level IMS imageability dictionary,TRUE,TRUE,2026-07-09,2562605,eb7a30df5d467b8c5b572b2e090adb2f
+measure_outputs/ims_dictionary_imageability.csv,data_prep_CCP_output/ims_dictionary_imageability.csv,CSV version of IMS imageability dictionary,TRUE,TRUE,2026-07-09,6934092,fbedb722210ed31dfbfeb877b8ca0a6d
+measure_outputs/ims_dictionary_abstractness_proxy.rds,data_prep_CCP_output/ims_dictionary_abstractness_proxy.rds,Lemma-level IMS abstractness proxy dictionary,TRUE,TRUE,2026-07-09,2570992,5e7dd658b9dc1a8fa91a6ef14cc9d84a
+measure_outputs/ims_dictionary_abstractness_proxy.csv,data_prep_CCP_output/ims_dictionary_abstractness_proxy.csv,CSV version of IMS abstractness proxy dictionary,TRUE,TRUE,2026-07-09,7279829,30245dde55911d8075dd4f5b9bf3514b

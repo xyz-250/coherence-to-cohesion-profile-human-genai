@@ -1,0 +1,346 @@
+---
+title: "CCP_Data_Export"
+author: "izb."
+format: html
+editor: visual
+---
+
+# 0.0 Root check
+
+```{r}
+
+getwd()
+
+stopifnot(file.exists("CC_Profile_HvsLM.Rproj"))
+```
+
+# Note on Structure:
+
+<!-- CELL A = setup -->
+
+<!-- CELL B = define prepared files to export -->
+
+<!-- CELL C = check source files -->
+
+<!-- CELL D = copy files into data_prep_CCP_output -->
+
+<!-- CELL E = check exported IMS psychometric resource -->
+
+<!-- CELL F = create manifest -->
+
+<!-- CELL G = create README -->
+
+<!-- CELL H = reload check only -->
+
+<!-- CELL I = optional zip -->
+
+These cells create the frozen data bundle for Part B.
+
+These cells create the frozen data bundle.
+
+# 1. Package setup and folder creation
+
+```{r}
+# CELL A — Freeze data preparation output: setup
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(purrr)
+library(tibble)
+
+dir.create(
+  "data_prep_CCP_output",
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+```
+
+# 2. — Define prepared files to freeze
+
+```{r}
+# CELL B — Define prepared files to freeze
+
+data_prep_files <- tibble::tribble(
+  ~source_path, ~target_path, ~role,
+  
+  "data_clean/l1_corpus_clean.rds",
+  "data_prep_CCP_output/l1_corpus_clean.rds",
+  "Clean L1-Corpus reference space for PMI/MI plausibility licensing",
+  
+  "data_clean/human_baseline_clean.rds",
+  "data_prep_CCP_output/human_baseline_clean.rds",
+  "Frozen human baseline text",
+  
+  "data_clean/basic_texts_clean.rds",
+  "data_prep_CCP_output/basic_texts_clean.rds",
+  "Frozen LLM reconstruction texts",
+  
+  "data_clean/current_paragraph_layer.rds",
+  "data_prep_CCP_output/current_paragraph_layer.rds",
+  "Paragraph-preserving layer for y4 paragraph overlap",
+  
+  "measure_outputs/current_texts_parsed.rds",
+  "data_prep_CCP_output/current_texts_parsed.rds",
+  "Token-level parsed layer from MODUL 5a",
+  
+  "measure_outputs/parsed_S_layer.rds",
+  "data_prep_CCP_output/parsed_S_layer.rds",
+  "Sentence-level parsed layer from MODUL 5a",
+  
+  "measure_outputs/ims_psychometric_lexicon_clean.rds",
+  "data_prep_CCP_output/ims_psychometric_lexicon_clean.rds",
+  "Clean IMS psychometric lexicon with concreteness, imageability, and abstractness proxy",
+  
+  "measure_outputs/ims_psychometric_lexicon_clean.csv",
+  "data_prep_CCP_output/ims_psychometric_lexicon_clean.csv",
+  "CSV version of clean IMS psychometric lexicon",
+  
+  "measure_outputs/ims_dictionary_concreteness.rds",
+  "data_prep_CCP_output/ims_dictionary_concreteness.rds",
+  "Lemma-level IMS concreteness dictionary",
+  
+  "measure_outputs/ims_dictionary_concreteness.csv",
+  "data_prep_CCP_output/ims_dictionary_concreteness.csv",
+  "CSV version of IMS concreteness dictionary",
+  
+  "measure_outputs/ims_dictionary_imageability.rds",
+  "data_prep_CCP_output/ims_dictionary_imageability.rds",
+  "Lemma-level IMS imageability dictionary",
+  
+  "measure_outputs/ims_dictionary_imageability.csv",
+  "data_prep_CCP_output/ims_dictionary_imageability.csv",
+  "CSV version of IMS imageability dictionary",
+  
+  "measure_outputs/ims_dictionary_abstractness_proxy.rds",
+  "data_prep_CCP_output/ims_dictionary_abstractness_proxy.rds",
+  "Lemma-level IMS abstractness proxy dictionary",
+  
+  "measure_outputs/ims_dictionary_abstractness_proxy.csv",
+  "data_prep_CCP_output/ims_dictionary_abstractness_proxy.csv",
+  "CSV version of IMS abstractness proxy dictionary"
+)
+
+data_prep_files
+```
+
+# 3. — Check whether all prepared files exist
+
+```{r}
+# CELL C — Check source files
+
+
+data_prep_files_checked <- data_prep_files |>
+  mutate(
+    source_exists = file.exists(source_path)
+  )
+
+data_prep_files_checked
+
+missing_sources <- data_prep_files_checked |>
+  filter(!source_exists)
+
+if (nrow(missing_sources) > 0) {
+  stop(
+    "Some required source files are missing:\n",
+    paste(missing_sources$source_path, collapse = "\n")
+  )
+}
+
+message("All required prepared source files exist.")
+```
+
+# 4. — Copy prepared files into data_prep_CCP_output
+
+```{r}
+# CELL D — Copy prepared files into data_prep_CCP_output
+walk2(
+  data_prep_files_checked$source_path,
+  data_prep_files_checked$target_path,
+  ~ file.copy(
+    from = .x,
+    to = .y,
+    overwrite = TRUE
+  )
+)
+
+message("Copied prepared files to data_prep_CCP_output/")
+```
+
+# 5. — Clean and save IMS concreteness lexicon
+
+```{r}
+
+# CELL E — Check exported IMS psychometric resource
+
+ims_export_files <- c(
+  "data_prep_CCP_output/ims_psychometric_lexicon_clean.rds",
+  "data_prep_CCP_output/ims_psychometric_lexicon_clean.csv",
+  "data_prep_CCP_output/ims_dictionary_concreteness.rds",
+  "data_prep_CCP_output/ims_dictionary_imageability.rds",
+  "data_prep_CCP_output/ims_dictionary_abstractness_proxy.rds"
+)
+
+missing_ims_export_files <- ims_export_files[!file.exists(ims_export_files)]
+
+if (length(missing_ims_export_files) > 0) {
+  stop(
+    "Some exported IMS files are missing:\n",
+    paste(missing_ims_export_files, collapse = "\n")
+  )
+}
+
+message("IMS psychometric resource files are present in data_prep_CCP_output/.")
+```
+
+# 6. — Create manifest (A manifest is simply an inventory list of the files inside some exported data bundle = create a CSV documentation table listing all exported files and their roles.)
+
+```{r}
+# CELL F — Create manifest for data_prep_CCP_output
+
+
+manifest_data_prep_CCP_output <- data_prep_files_checked |>
+  dplyr::mutate(
+    target_exists = file.exists(target_path),
+    frozen_date = as.character(Sys.Date()),
+    target_file_size_bytes = file.info(target_path)$size,
+    target_md5 = as.character(tools::md5sum(target_path))
+  ) |>
+  dplyr::select(
+    source_path,
+    target_path,
+    role,
+    source_exists,
+    target_exists,
+    frozen_date,
+    target_file_size_bytes,
+    target_md5
+  )
+
+readr::write_csv(
+  manifest_data_prep_CCP_output,
+  "data_prep_CCP_output/manifest_data_prep_CCP_output.csv"
+)
+
+manifest_data_prep_CCP_output
+```
+
+# 7. — Create README for data_prep_CCP_output
+
+```{r}
+# CELL G — Create README for data_prep_CCP_output
+
+readme_text <- c(
+  "data_prep_CCP_output",
+  "",
+  "This folder contains the frozen prepared data for the CCP generation pipeline.",
+  "",
+  "The earlier part of the R project functions as data preparation.",
+  "From MODUL 5b onward, CCP_generation_pipeL reads only from this folder.",
+  "",
+  "Included core files:",
+  "",
+  "- l1_corpus_clean.rds: cleaned L1-Corpus reference space",
+  "- human_baseline_clean.rds: frozen human baseline text",
+  "- basic_texts_clean.rds: frozen LLM reconstruction texts",
+  "- current_paragraph_layer.rds: paragraph-preserving layer for y4",
+  "- current_texts_parsed.rds: token-level parsed layer from MODUL 5a",
+  "- parsed_S_layer.rds: sentence-level parsed layer from MODUL 5a",
+  "- ims_psychometric_lexicon_clean.rds: cleaned IMS psychometric lexicon for y1",
+  "- ims_dictionary_concreteness.rds: lemma-level concreteness dictionary",
+  "- ims_dictionary_imageability.rds: lemma-level imageability dictionary",
+  "- ims_dictionary_abstractness_proxy.rds: lemma-level abstractness proxy dictionary",
+  "",
+  "IMS note:",
+  "The IMS psychometric resource was prepared before export and is only copied here.",
+  "The actual y1 measurement is not computed in this file.",
+  "MODUL 5b joins the parsed token lemmas with the IMS psychometric lexicon by lemma.",
+  "",
+  "Pipeline rule:",
+  "Every new module reads existing outputs.",
+  "No previous module is regenerated unless explicitly needed.",
+  "",
+  paste0("Frozen on: ", Sys.Date())
+)
+
+writeLines(
+  readme_text,
+  "data_prep_CCP_output/README_data_prep_CCP_output.txt"
+)
+
+message("Saved: data_prep_CCP_output/README_data_prep_CCP_output.txt")
+```
+
+# 8. — Reload check for data_prep_CCP_output
+
+```{r}
+# CELL H — Reload check for data_prep_CCP_output
+
+check_current_texts_parsed <- readRDS(
+  "data_prep_CCP_output/current_texts_parsed.rds"
+)
+
+check_parsed_S_layer <- readRDS(
+  "data_prep_CCP_output/parsed_S_layer.rds"
+)
+
+check_ims_psychometric_lexicon <- readRDS(
+  "data_prep_CCP_output/ims_psychometric_lexicon_clean.rds"
+)
+
+dplyr::glimpse(check_current_texts_parsed)
+dplyr::glimpse(check_parsed_S_layer)
+dplyr::glimpse(check_ims_psychometric_lexicon)
+
+check_current_texts_parsed |>
+  dplyr::count(text_id)
+
+check_parsed_S_layer |>
+  dplyr::count(text_id)
+
+message("Reload check completed successfully.")
+```
+
+# 9. — Optional zip for sharing
+
+```{r}
+# CELL I — Optional zip for sharing
+
+
+zip(
+  zipfile = "data_prep_CCP_output.zip",
+  files = list.files(
+    "data_prep_CCP_output",
+    full.names = TRUE
+  )
+)
+
+message("Saved: data_prep_CCP_output.zip")
+```
+
+# END of CCP_Data_Export!
+
+```{r}
+1 + 1
+```
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).

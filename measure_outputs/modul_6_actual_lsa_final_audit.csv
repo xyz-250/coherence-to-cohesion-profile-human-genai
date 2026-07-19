@@ -1,0 +1,9 @@
+indices_family,frozen_file,file_size_bytes,status
+x3s,modul_6_actual_lsa_x3s_sentence_continuity.rds,2709,PASS
+x3p,modul_6_actual_lsa_x3p_paragraph_continuity.rds,806,PASS
+x3pcw,modul_6_actual_lsa_x3pcw_paragraph_continuity.rds,11008,PASS
+x3pcw_gradient,modul_6_actual_lsa_x3pcw_topic_continuity_gradient.rds,1149,PASS
+x3co,modul_6_actual_lsa_x3co_connector_continuity.rds,31600,PASS
+x4,modul_6_actual_lsa_x4_title_subheading.rds,18879,PASS
+x5_prompt_compliance,modul_6_actual_lsa_x5_prompt_compliance_bundle.rds,490,PASS
+x6_txts_lsa_sim,modul_6_actual_lsa_x6_txts_lsa_sim_bundle.rds,2248,PASS

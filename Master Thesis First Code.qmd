@@ -1,0 +1,2219 @@
+---
+title: "CC-Profile: Human vs. LLM-Generated Texts"
+author: "izb."
+format: html
+editor: visual
+---
+
+## MODUL 1
+
+In Modul 1, the annotated human baseline text is prepared for the reconstruction experiment and later CC-profile analysis. First, the file text1_hm_annotated.txt is read from the texte_input folder. The annotation structure is then extracted: the line marked with ## is treated as the main title/topic, while the lines marked with # are treated as section titles. After removing these headings, the remaining body text is stored separately as body_text. From this body text, the pipeline creates a paragraph dataframe and a sentence dataframe with standardized paragraph and sentence IDs. Finally, every ninth word of the body text is extracted as an ordered seed-word sequence, stored in seeds_df, and saved together with the structural metadata. Thus, Modul 1 transforms the human baseline into three controlled resources: document structure, segmented text units, and seed words for LLM reconstruction.
+
+# 0 Librarys 
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(httr2)
+library(jsonlite)
+library(purrr)
+library(readr)
+```
+
+# 1.1. Check the input folder
+
+```{r}
+list.files("texte_input")
+```
+
+# 1.2. Read the human baseline (Show the human baseline structure)
+
+```{r}
+human_path <- file.path("texte_input", "text1_hm_annotated.txt")
+
+human_lines <- readr::read_lines(human_path)
+
+head(human_lines)
+```
+
+# 1.3. Extract title, section titles, and body text
+
+```{r}
+# --- MINIMALISTISCHE EXTRAKTION: Menschliche Baseline ---
+
+text_id_human <- "HUMAN_BASELINE_001"
+
+# i. Gesamten Text analysieren und Überschriften-Metadaten direkt erzeugen
+headings_df <- tibble::tibble(raw_line = human_lines) |>
+  dplyr::mutate(
+    is_heading = stringr::str_detect(raw_line, "^#{1,6}\\s+"),
+    heading_level = dplyr::if_else(
+      is_heading, 
+      stringr::str_count(stringr::str_extract(raw_line, "^#{1,6}"), "#"), 
+      NA_integer_
+    ),
+    cleaned_text = dplyr::if_else(
+      is_heading, 
+      stringr::str_remove(raw_line, "^#{1,6}\\s+"), 
+      raw_line
+    )
+  ) |>
+  dplyr::filter(is_heading) |>
+  dplyr::mutate(
+    text_id = text_id_human, 
+    source_type = "human", 
+    model_family = NA_character_, 
+    model_id = NA_character_,
+    heading_id = paste0("H", stringr::str_pad(dplyr::row_number(), 2, pad = "0")),
+    heading_type = dplyr::case_when(
+      heading_level == 2 ~ "main_title", 
+      heading_level == 1 ~ "section_title", 
+      TRUE ~ "other_heading"
+    )
+  ) |>
+  dplyr::select(
+    text_id, source_type, model_family, model_id, 
+    heading_id, heading_level, heading_type, heading_text = cleaned_text
+  )
+
+# ii. Vektoren direkt aus dem fertigen Dataframe ziehen
+main_title     <- headings_df |> dplyr::filter(heading_type == "main_title") |> dplyr::pull(heading_text) |> dplyr::first()
+section_titles <- headings_df |> dplyr::filter(heading_type == "section_title") |> dplyr::pull(heading_text)
+
+# iii. Fließtext extrahieren (Direkt aus den Zeilen ohne '#' am Anfang)
+body_text <- human_lines[!stringr::str_detect(human_lines, "^#{1,6}\\s+")] |> paste(collapse = "\n")
+
+# --- KONTROLLAUSGABE ---
+headings_df
+main_title
+section_titles
+cat(substr(body_text, 1, 2000))
+```
+
+# 1.4. Creates paragraph data frame
+
+```{r}
+# --- ABSÄTZE ERZEUGEN ---
+paragraphs <- stringr::str_split(body_text, "\\n\\s*\\n")[[1]] |>
+  stringr::str_squish()
+
+paragraphs <- paragraphs[paragraphs != ""]
+
+paragraphs_df <- tibble::tibble(
+  text_id = text_id_human,
+  source_type = "human",
+  model_family = NA_character_,
+  model_id = NA_character_,
+  paragraph_id = paste0("P", stringr::str_pad(seq_along(paragraphs), 2, pad = "0")),
+  paragraph_text = paragraphs
+)
+
+paragraphs_df
+```
+
+# 1.5.a) Create sentence dataframe
+
+```{r}
+# --- SÄTZE MIT HIERARCHISCHEN IDS ERZEUGEN ---
+
+# Sicherer Satzsplitter-Hilfsfunktion
+split_sentences <- function(x) {
+  sents <- stringr::str_split(x, "(?<=[.!?])\\s+")[[1]] |> stringr::str_squish()
+  return(sents[sents != ""])
+}
+
+# Sätze über alle Absätze loopen und relational verknüpfen
+sentences_df <- purrr::map_dfr(seq_along(paragraphs), function(p) {
+  sents <- split_sentences(paragraphs[p])
+  
+  tibble::tibble(
+    text_id = text_id_human,
+    source_type = "human",
+    model_family = NA_character_,
+    model_id = NA_character_,
+    paragraph_id = paste0("P", stringr::str_pad(p, 2, pad = "0")),
+    sentence_id = paste0(
+      "P", stringr::str_pad(p, 2, pad = "0"),
+      "_S", stringr::str_pad(seq_along(sents), 2, pad = "0")
+    ),
+    sentence_text = sents
+  )
+})
+
+sentences_df
+```
+
+# 1.6.a) Extract every x-th (here: 9) word only from the body text 
+
+```{r}
+# --- SEED-WÖRTER AUS DEM FLIESS-TEXT EXTRAHIEREN ---
+words <- stringr::str_extract_all(
+  body_text,
+  "\\p{L}+(?:[-’']\\p{L}+)*"
+)[[1]]
+
+seed_words <- words[seq(9, length(words), by = 9)]
+
+seeds_df <- tibble::tibble(
+  text_id = text_id_human,
+  source_type = "human",
+  seed_method = "every_9th_word",
+  seed_id = seq_along(seed_words),
+  seed_word = seed_words
+)
+
+length(words)
+length(seed_words)
+seeds_df
+```
+# 1.6.b) Create text-level dataframe
+```{r}
+# --- TEXT-LEVEL METADATEN-ANKER ERZEUGEN ---
+texts_df <- tibble::tibble(
+  text_id = text_id_human,
+  source_type = "human",
+  model_family = NA_character_,
+  model_id = NA_character_,
+  main_title = main_title,
+  word_count = length(words),
+  paragraph_count = nrow(paragraphs_df),
+  sentence_count = nrow(sentences_df),
+  seed_count = nrow(seeds_df),
+  body_text = body_text
+)
+
+texts_df
+```
+# # 1.7.-a Clean human baseline als txt speichern
+```{r}
+dir.create("outputs_human", showWarnings = FALSE)
+
+readr::write_file(
+  body_text,
+  "outputs_human/HUMAN_BASELINE_001.txt"
+)
+
+list.files("outputs_human")
+```
+
+# 1.7.-b Save human baseline structure and seed words
+```{r}
+# --- DATAFRAMES UND SPEICHERPFADE REPRODUZIERBAR SICHERN ---
+dir.create("metadata", showWarnings = FALSE)
+dir.create("seeds", showWarnings = FALSE)
+
+readr::write_csv(texts_df,      "metadata/text1_hm_texts.csv")
+readr::write_csv(headings_df,   "metadata/text1_hm_headings.csv")
+readr::write_csv(paragraphs_df, "metadata/text1_hm_paragraphs.csv")
+readr::write_csv(sentences_df,  "metadata/text1_hm_sentences.csv")
+readr::write_csv(seeds_df,      "metadata/text1_hm_seed_words_every_9th.csv")
+
+readr::write_lines(
+  seed_words,
+  "seeds/seed_words_every_9th_text1_hm.txt"
+)
+```
+
+# 1.8. Check
+
+```{r}
+list.files("metadata")
+list.files("seeds")
+```
+
+## MODUL 2a - Prompt generation
+Logik: MODUL 2b = Texte generieren und roh sichern
+MODUL 2c = generierte Texte strukturell zerlegen: texts/headings/paragraphs/sentences
+MODUL 4  = Referenzkorpus erstellen
+MODUL 5  = Parsing / Analyse-Pipeline
+
+# 2.a)-1. Checks requiered objects
+
+```{r}
+main_title
+section_titles
+length(section_titles)
+
+length(words)
+length(seed_words)
+seeds_df
+```
+
+# 2.a)-2. Prepering prompt elements
+
+```{r}
+# 2a.2 Prepare prompt elements
+
+# Use original title and section titles from the human baseline
+main_title_prompt <- main_title
+
+section_titles_prompt <- section_titles
+
+# Numbered list of section titles
+section_string_prompt <- paste0(
+  seq_along(section_titles_prompt),
+  ". ",
+  section_titles_prompt,
+  collapse = "\n"
+)
+
+# Seed-word chain
+seed_string <- paste(seed_words, collapse = " | ")
+
+# --- CONTROL OUTPUT ---
+main_title_prompt
+cat(section_string_prompt, "\n\n")
+cat(seed_string)
+```
+
+# 2.a)-3. Master-Prompt erstellen
+
+```{r}
+# 2a.3 Master-Prompt erstellen
+
+prompt_master <- glue::glue("
+Du bist ein erfahrener Autor für Deutsch als Fremdsprache.
+
+Aufgabe:
+Schreibe eigenständig einen muttersprachlichen deutschen Sachtext zum Thema:
+
+{main_title_prompt}
+
+Der Text darf nicht länger als {length(words)} Wörter sein!
+
+Strukturelle Vorgaben:
+- Gliedere den Text nach exakt den folgenden drei Zwischenüberschriften, NICHT MEHR:
+
+{section_string_prompt}
+
+- Verwende keine weiteren Überschriften außer dem Haupttitel und den drei vorgegebenen Zwischenüberschriften.
+
+Sprachliche Vorgaben:
+- Plagiere nicht!
+- Verwende natürlich eingebettete Hauptsätze, Nebensätze und Relativsätze.
+- Achte besonders auf Relativsätze mit „wer“ und „was“ sowie auf Pronominaladverbien wie „dadurch“ und „womit“.
+
+Seed-Wörter:
+Du bekommst eine Hilfestellung: Die folgende Liste enthält Keimwörter, auch Seed-Wörter genannt.
+Verwende alle Seed-Wörter exakt in der vorgegebenen Reihenfolge.
+Die Seed-Wörter sollen natürlich in den Text integriert werden. 
+
+Wichtig:
+- Verändere die Reihenfolge der Seed-Wörter nicht.
+- Liste die Seed-Wörter nicht separat auf.
+- Markiere die Seed-Wörter nicht.
+- Schreibe nur den fertigen Text.
+
+Seed-Wörter:
+{seed_string}
+")
+
+```
+
+# 2.a)-4. Checks and saves master prompt
+
+```{r}
+# 2.4. Check and save master prompt
+
+cat(prompt_master)
+
+dir.create("prompts", showWarnings = FALSE)
+
+readr::write_file(
+  prompt_master,
+  file.path("prompts", "prompt_master_reconstruction.txt")
+)
+
+list.files("prompts")
+```
+
+# MODUL 2b) OpenRouter Integration
+In this module, the reconstruction prompt is sent to the selected LLMs via OpenRouter. The generated outputs are saved as plain TXT files, and a metadata table is created to document the model name, model family, output path, and generation date. No decoding parameters such as temperature or top_p are manually specified in this basic reconstruction condition.
+
+(drei Standardmodelle definieren
+OpenRouter-Funktion schreiben
+Prompt an jedes Modell schicken
+TXT-Dateien + metadata speichern)
+
+Logik:
+MODUL 2b = Texte generieren und roh sichern
+MODUL 2c = generierte Texte strukturell zerlegen: texts/headings/paragraphs/sentences
+MODUL 4  = Referenzkorpus erstellen
+MODUL 5  = Parsing / Analyse-Pipeline
+
+# 2b)-1 API key laden
+
+```{r}
+#| label: api-key-check
+#| eval: false
+
+openrouter_key <- Sys.getenv("OPENROUTER_API_KEY")
+
+if (openrouter_key == "") {
+  stop("Fehler: Kein OpenRouter API-Schlüssel gefunden!")
+} else {
+  message("OpenRouter API key found.")
+}
+```
+
+# 2b)-2 OpenRouter-Function writing
+
+```{r}
+# 2b)-2 OpenRouter-Function writing
+
+#| label: openrouter-function
+#| eval: false
+
+call_openrouter_api <- function(model_slug, prompt_content) {
+  
+  openrouter_key <- Sys.getenv("OPENROUTER_API_KEY")
+  
+  if (openrouter_key == "") {
+    stop("Fehler: Kein OpenRouter API-Schlüssel gefunden!")
+  }
+  
+  payload <- list(
+    model = model_slug,
+    messages = list(
+      list(role = "user", content = prompt_content)
+    ),
+    max_tokens = 900
+  )
+  
+  req <- httr2::request("https://openrouter.ai/api/v1/chat/completions") |>
+    httr2::req_headers(
+      "Authorization" = paste("Bearer", openrouter_key),
+      "Content-Type"  = "application/json",
+      "HTTP-Referer"  = "https://github.com",
+      "X-Title"       = "Master Thesis CC-Profile"
+    ) |>
+    httr2::req_body_json(payload, auto_unbox = TRUE) |>
+    httr2::req_retry(max_tries = 3)
+  
+  resp <- httr2::req_perform(req)
+  
+  if (!grepl("application/json", httr2::resp_content_type(resp), fixed = TRUE)) {
+    cat("Server-Antwort war kein JSON! Textinhalt:\n")
+    cat(httr2::resp_body_string(resp))
+    stop("Abbruch wegen falschem Content-Type.")
+  }
+  
+  body <- httr2::resp_body_json(resp)
+  
+  return(body$choices[[1]]$message$content)
+}
+```
+
+# 2.b)-3 Testzelle
+
+#```{r}
+#test_text_mistral_nemo <- call_openrouter_api(
+#  model_slug = "mistralai/mistral-nemo",
+#  prompt_content = as.character(prompt_master)
+#)
+#cat(substr(test_text_mistral_nemo, 1, 1500))
+#cat(test_text_mistral_nemo)
+#```
+
+# Comment: The first Mistral test produced a text that was very close to the human baseline, which suggested that the prompt created too much reconstruction pressure and that the model may also have been familiar with similar online material. We therefore adapted the prompt so that it asks for an eigenständig written text, explicitly says “Plagiere nicht!”, and requires the seed words only as ordered Keimwörter, not as a cue to reproduce an existing source text. We also kept the structure close to the human baseline but controlled it more clearly by allowing only the three given subtitles and no additional headings, so the output remains comparable without encouraging direct copying.
+
+# 2b)-4 Words count
+
+#```{r}
+#test_words <- stringr::str_extract_all(
+#  test_text_mistral_nemo,
+#  "\\p{L}+(?:[-’']\\p{L}+)*"
+#)[[1]]
+
+#length(test_words)
+#```
+
+# 2b)-5 Defines 3 standard models
+
+```{r}
+#| label: define-standard-models
+#| eval: false
+
+standard_modelle <- tibble::tribble(
+  ~text_id,                   ~model_family, ~model_id,
+  "BASIC_CHATGPT_NATIVE_001", "ChatGPT",     "openai/gpt-4o-mini",
+  "BASIC_GEMINI_NATIVE_001",  "Gemini",      "google/gemini-2.5-flash",
+  "BASIC_CLAUDE_NATIVE_001",  "Claude",      "anthropic/claude-haiku-4.5"
+)
+
+standard_modelle
+```
+# temporary block -1
+```{r}
+#| label: generate-missing-standard-model-texts
+#| eval: false
+
+existing_outputs <- list.files("outputs_basic", full.names = FALSE)
+
+standard_modelle_missing <- standard_modelle |>
+  dplyr::filter(
+    !(paste0(text_id, ".txt") %in% existing_outputs)
+  )
+
+standard_modelle_missing
+```
+
+# temporary block 2
+```{r}
+#| label: generate-missing-model-texts-only
+#| eval: false
+
+for (i in seq_len(nrow(standard_modelle_missing))) {
+  
+  current <- standard_modelle_missing[i, ]
+  
+  message("Generiere fehlenden Text für: ", current$text_id)
+  
+  generated_text <- call_openrouter_api(
+    model_slug = current$model_id,
+    prompt_content = as.character(prompt_master)
+  )
+  
+  output_path <- file.path("outputs_basic", paste0(current$text_id, ".txt"))
+  
+  readr::write_file(generated_text, output_path)
+  
+  message("✔ Datei gespeichert: ", output_path)
+  
+  Sys.sleep(2)
+}
+```
+# temporary? block-3
+```{r}
+#| label: rebuild-basic-metadata-from-txt
+#| eval: false
+
+existing_basic_files <- standard_modelle |>
+  dplyr::mutate(
+    output_path = file.path("outputs_basic", paste0(text_id, ".txt")),
+    file_exists = file.exists(output_path)
+  )
+
+existing_basic_files
+```
+
+# 2b)-6 Generates and saves TXT + metadata <- # 2b)-6 FULL GENERATION LOOP — DO NOT RUN AGAIN -> for a new pipeline this means you can define your models proparly and than run the full generation loop, not the temporry chunks, but my paths for the models were not accurate, and after text1 was generated, I didn t want it get regenerated, but rather keep the original, sam for the Claude model. Only ChatGPT was generated in the first attempt, and then for Gemini and Claude temporary code blocks were run.
+
+
+###```{r}
+#| label: generate-standard-model-texts
+#| eval: false
+
+#dir.create("outputs_basic", showWarnings = FALSE)
+#dir.create("metadata", showWarnings = FALSE)
+#
+#metadata_basic <- tibble::tibble()
+#
+#for (i in seq_len(nrow(standard_modelle))) {
+#  
+#  current <- standard_modelle[i, ]
+#  
+#  message("Verbinde mit OpenRouter... Generiere Text für: ", current$text_id)
+#  
+#  generated_text <- call_openrouter_api(
+#    model_slug = current$model_id,
+#    prompt_content = as.character(prompt_master)
+#  )
+#  
+#  output_path <- file.path("outputs_basic", paste0(current$text_id, ".txt"))
+#  
+#  readr::write_file(generated_text, output_path)
+#  
+#  generated_words <- stringr::str_extract_all(
+#    generated_text,
+#    "\\p{L}+(?:[-’']\\p{L}+)*"
+#  )[[1]]
+#  
+#  metadata_basic <- dplyr::bind_rows(
+#    metadata_basic,
+#    tibble::tibble(
+#      text_id = current$text_id,
+#      source_type = "LLM",
+#      model_family = current$model_family,
+#      model_id = current$model_id,
+#      generation_condition = "basic_native_generation",
+#      parameter_status = "native_default",
+#      temperature = NA_real_,
+#      top_p = NA_real_,
+#      prompt_file = "prompts/prompt_master_reconstruction.txt",
+#      output_path = output_path,
+#      target_words = length(words),
+#      generated_word_count = length(generated_words),
+#      seed_count = length(seed_words),
+#      generation_date = as.character(Sys.time())
+#    )
+#  )
+#  
+#  message("✔ Datei gespeichert: ", output_path)
+# 
+#  Sys.sleep(2)
+#}
+#
+#readr::write_csv(
+# metadata_basic,
+#  "metadata/metadata_basic.csv"
+#)
+#metadata_basic
+#``` 
+
+# 2b)-6b Rebuild metadata from saved TXT files
+
+```{r}
+#| label: rebuild-metadata-basic-from-txt
+#| eval: false
+
+count_words_in_file <- function(path) {
+  txt <- readr::read_file(path)
+  length(stringr::str_extract_all(
+    txt,
+    "\\p{L}+(?:[-’']\\p{L}+)*"
+  )[[1]])
+}
+
+metadata_basic <- standard_modelle |>
+  dplyr::mutate(
+    output_path = file.path("outputs_basic", paste0(text_id, ".txt")),
+    file_exists = file.exists(output_path)
+  )
+
+if (!all(metadata_basic$file_exists)) {
+  stop("Nicht alle Output-Dateien existieren.")
+}
+
+metadata_basic <- metadata_basic |>
+  dplyr::mutate(
+    generated_word_count = purrr::map_int(output_path, count_words_in_file),
+    generation_date = as.character(file.info(output_path)$mtime)
+  ) |>
+  dplyr::transmute(
+    text_id,
+    source_type = "LLM",
+    model_family,
+    model_id,
+    generation_condition = "basic_native_generation",
+    parameter_status = "native_default",
+    temperature = NA_real_,
+    top_p = NA_real_,
+    prompt_file = "prompts/prompt_master_reconstruction.txt",
+    output_path,
+    target_words = length(words),
+    generated_word_count,
+    seed_count = length(seed_words),
+    generation_date
+  )
+
+readr::write_csv(
+  metadata_basic,
+  "metadata/metadata_basic.csv"
+)
+
+metadata_basic
+```
+# Note: Under the same reconstruction prompt and native default generation conditions, Claude produced a substantially shorter text than ChatGPT and Gemini. This length deviation is therefore documented as part of the model-specific output profile rather than corrected by overwriting the original generation.
+
+
+# 2b.7 Check saved files
+```{r}
+#| label: check-basic-generation
+#| eval: false
+
+list.files("outputs_basic")
+list.files("metadata")
+
+metadata_basic
+```
+
+# Let us read generated TXT files
+
+```{r}
+#| label: read-generated-basic-texts
+#| eval: false
+
+chatgpt_text <- readr::read_file("outputs_basic/BASIC_CHATGPT_NATIVE_001.txt")
+gemini_text  <- readr::read_file("outputs_basic/BASIC_GEMINI_NATIVE_001.txt")
+claude_text  <- readr::read_file("outputs_basic/BASIC_CLAUDE_NATIVE_001.txt")
+
+cat(claude_text)
+```
+
+# MODULE 3 - Referencecorpus generation
+# ============================================================
+# MODUL 3 — L1-Corpus generation
+# Goal:
+#   Build a German L1-Corpus
+#   for the PMI-/MI-based plausibility matrix x_2.
+#
+# Sources:
+#   (1) Leipzig Corpora Collection: deu_news_2023_1M
+#       -> German L1-Corpus data
+#       -> thematically filtered for digitalization / work / AI / future / change
+#
+#   (2) Falko-L1
+#       -> manually added L1 texts by German native speakers
+#       -> saved as .txt files in the same folder
+#
+# IMPORTANT:
+#   This module only reads/creates reference data.
+#   It must NOT rerun Modul 2b.
+#
+# Pipeline rule:
+#   From now on, every new module should read existing outputs,
+#   not regenerate previous ones.
+# ============================================================
+
+# 3.1. Creates target folder for the L1-Corpus
+
+```{r}
+#| label: compile-leipzig-l1-corpus
+#| eval: false
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(tidyr)
+library(tibble)
+
+# ------------------------------------------------------------
+# 1. Create target folder for the L1-Corpus
+# ------------------------------------------------------------
+
+dir_ref_corpus <- "referenz_korpus_input"
+dir.create(dir_ref_corpus, showWarnings = FALSE)
+
+# ------------------------------------------------------------
+# 2. Download Leipzig L1-Corpus archive
+# ------------------------------------------------------------
+
+leipzig_url <- "https://downloads.wortschatz-leipzig.de/corpora/deu_news_2023_1M.tar.gz"
+
+download_dir <- file.path(dir_ref_corpus, "downloads")
+extract_dir  <- file.path(dir_ref_corpus, "leipzig_extracted")
+
+dir.create(download_dir, showWarnings = FALSE)
+dir.create(extract_dir, showWarnings = FALSE)
+
+tar_path <- file.path(download_dir, "deu_news_2023_1M.tar.gz")
+
+if (!file.exists(tar_path)) {
+  message("Downloading Leipzig L1-Corpus: deu_news_2023_1M ...")
+  download.file(leipzig_url, tar_path, mode = "wb")
+} else {
+  message("Leipzig archive already exists. Download skipped.")
+}
+
+# ------------------------------------------------------------
+# 3. Extract Leipzig archive
+# ------------------------------------------------------------
+
+message("Extracting Leipzig L1-Corpus data ...")
+untar(tar_path, exdir = extract_dir)
+
+sentences_file <- list.files(
+  extract_dir,
+  pattern = "sentences\\.txt$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+if (length(sentences_file) == 0) {
+  stop("No sentences.txt file found in the Leipzig archive.")
+}
+
+sentences_file <- sentences_file[1]
+
+# ------------------------------------------------------------
+# 4. Read Leipzig sentences safely
+# Leipzig format: ID [TAB] sentence text
+# ------------------------------------------------------------
+
+message("Reading Leipzig sentences line by line ...")
+
+raw_data <- readr::read_lines(sentences_file)
+
+leipzig_df <- tibble::tibble(raw_line = raw_data) |>
+  tidyr::separate(
+    raw_line,
+    into = c("sentence_id", "sentence_text"),
+    sep = "\\t",
+    extra = "merge",
+    fill = "right"
+  ) |>
+  dplyr::filter(!is.na(sentence_text)) |>
+  dplyr::mutate(source = "Leipzig_deu_news_2023_1M")
+
+# ------------------------------------------------------------
+# 5. Topic filter for the Leipzig L1-Corpus
+# ------------------------------------------------------------
+
+topic_pattern <- paste(
+  c(
+    "digitalisierung",
+    "arbeitswelt",
+    "arbeitswelt(en)?",
+    "künstliche\\s+intelligenz",
+    "kuenstliche\\s+intelligenz",
+    "künstliche[-_ ]intelligenz",
+    "kuenstliche[-_ ]intelligenz",
+    "zukunft\\s+der\\s+arbeit",
+    "zukunft[-_ ]der[-_ ]arbeit",
+    "arbeit\\s+im\\s+wandel",
+    "arbeit[-_ ]im[-_ ]wandel",
+    "arbeitsmarkt",
+    "arbeitsform(en)?",
+    "automatisierung"
+  ),
+  collapse = "|"
+)
+
+message("Filtering Leipzig L1-Corpus sentences by topic ...")
+
+l1_leipzig_filtered <- leipzig_df |>
+  dplyr::mutate(sentence_text_lower = stringr::str_to_lower(sentence_text)) |>
+  dplyr::filter(stringr::str_detect(sentence_text_lower, topic_pattern)) |>
+  dplyr::select(source, sentence_id, sentence_text)
+
+# ------------------------------------------------------------
+# 6. Export filtered Leipzig L1-Corpus
+# ------------------------------------------------------------
+
+output_txt <- file.path(dir_ref_corpus, "L1_Leipzig_News_2023_Filtered.txt")
+output_csv <- file.path(dir_ref_corpus, "L1_Leipzig_News_2023_Filtered.csv")
+
+readr::write_lines(l1_leipzig_filtered$sentence_text, output_txt)
+readr::write_csv(l1_leipzig_filtered, output_csv)
+
+message("✔ Leipzig L1-Corpus step completed.")
+message("Number of filtered sentences: ", nrow(l1_leipzig_filtered))
+message("TXT saved under: ", output_txt)
+message("CSV saved under: ", output_csv)
+```
+
+# 3.2. Random Inspection of the Lepzig Corpus Data
+```{r}
+#| label: inspect-random-leipzig-l1-corpus-safe
+#| eval: false
+
+library(readr)
+library(stringr)
+
+# ------------------------------------------------------------
+# 1. Define and read Leipzig L1-Corpus
+# ------------------------------------------------------------
+
+dir_ref_corpus <- "referenz_korpus_input"
+
+leipzig_txt <- file.path(
+  dir_ref_corpus,
+  "L1_Leipzig_News_2023_Filtered.txt"
+)
+
+if (!file.exists(leipzig_txt)) {
+  stop("Leipzig L1-Corpus file not found: ", leipzig_txt)
+}
+
+leipzig_lines <- readr::read_lines(
+  leipzig_txt,
+  locale = readr::locale(encoding = "UTF-8")
+)
+
+leipzig_lines <- leipzig_lines[stringr::str_squish(leipzig_lines) != ""]
+
+# ------------------------------------------------------------
+# 2. Random inspection
+# ------------------------------------------------------------
+
+set.seed(123)
+
+sample_sentences <- sample(
+  leipzig_lines,
+  size = min(30, length(leipzig_lines))
+)
+
+message("Number of Leipzig L1-Corpus sentences: ", length(leipzig_lines))
+cat(sample_sentences, sep = "\n\n---\n\n")
+```
+ 
+ # ============================================================
+# Falko-L1
+# ============================================================
+# Die Falko-L1-Texte werden NICHT automatisch heruntergeladen.
+# Sie werden manuell als .txt-Dateien in folgenden Ordner gelegt:
+#
+#   referenz_korpus_input/falko_l1/
+#
+# Danach kann Modul 5 oder ein späterer Referenzkorpus-Block
+# alle .txt-Dateien gemeinsam einlesen.
+# ============================================================
+
+# 3.2.
+```{r}
+file.exists("Falko_Kobalt_L1_Essays.txt")
+```
+
+# 3.4. Combines leipzig-and-falko-l1-corpus
+
+```{r}
+#| label: combine-leipzig-and-falko-l1-corpus
+#| eval: false
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(tibble)
+
+# ------------------------------------------------------------
+# 1. Define paths
+# ------------------------------------------------------------
+
+dir_ref_corpus <- "referenz_korpus_input"
+
+leipzig_path <- file.path(
+  dir_ref_corpus,
+  "L1_Leipzig_News_2023_Filtered.txt"
+)
+
+falko_path <- "Falko_Kobalt_L1_Essays.txt"
+
+# ------------------------------------------------------------
+# 2. Safety checks
+# ------------------------------------------------------------
+
+if (!file.exists(leipzig_path)) {
+  stop("Leipzig L1-Corpus file not found: ", leipzig_path)
+}
+
+if (!file.exists(falko_path)) {
+  stop("Falko-L1 file not found: ", falko_path)
+}
+
+# ------------------------------------------------------------
+# 3. Read Leipzig and Falko
+# ------------------------------------------------------------
+
+leipzig_lines <- readr::read_lines(
+  leipzig_path,
+  locale = readr::locale(encoding = "UTF-8")
+)
+
+falko_lines <- readr::read_lines(
+  falko_path,
+  locale = readr::locale(encoding = "UTF-8")
+)
+
+leipzig_df <- tibble(
+  source = "Leipzig_filtered",
+  text_unit = leipzig_lines
+)
+
+falko_df <- tibble(
+  source = "Falko_L1",
+  text_unit = falko_lines
+)
+
+# ------------------------------------------------------------
+# 4. Combine into one L1-Corpus
+# ------------------------------------------------------------
+
+l1_corpus_combined <- bind_rows(
+  leipzig_df,
+  falko_df
+) |>
+  mutate(text_unit = str_squish(text_unit)) |>
+  filter(!is.na(text_unit), text_unit != "")
+
+# ------------------------------------------------------------
+# 5. Export combined L1-Corpus
+# ------------------------------------------------------------
+
+combined_txt <- file.path(
+  dir_ref_corpus,
+  "L1_Corpus_Combined.txt"
+)
+
+combined_csv <- file.path(
+  dir_ref_corpus,
+  "L1_Corpus_Combined.csv"
+)
+
+readr::write_lines(l1_corpus_combined$text_unit, combined_txt)
+readr::write_csv(l1_corpus_combined, combined_csv)
+
+message("✔ Combined L1-Corpus created.")
+message("Leipzig units: ", nrow(leipzig_df))
+message("Falko units: ", nrow(falko_df))
+message("Total units after cleaning: ", nrow(l1_corpus_combined))
+message("TXT saved under: ", combined_txt)
+message("CSV saved under: ", combined_csv)
+```
+
+# Modul 4 WRANGLING SCRIPTS
+# 4.1. 
+```{r}
+dir.create("scripts", showWarnings = FALSE)
+dir.create("data_clean", showWarnings = FALSE)
+dir.create("measure_outputs", showWarnings = FALSE)
+```
+
+# 4.2. scripts/03_wrangle_l1_corpus.R
+```{r}
+# ============================================================
+# 03_wrangle_l1_corpus.R
+# Goal: Freeze the existing combined L1-Corpus as clean RDS.
+# Input: referenz_korpus_input/L1_Corpus_Combined.csv
+# Output: data_clean/l1_corpus_clean.rds
+# ============================================================
+
+library(dplyr)
+library(readr)
+library(stringr)
+
+dir.create("data_clean", showWarnings = FALSE)
+
+read_csv("referenz_korpus_input/L1_Corpus_Combined.csv", show_col_types = FALSE) |>
+  mutate(text_unit = str_squish(text_unit)) |>
+  filter(!is.na(text_unit), text_unit != "") |>
+  transmute(
+    unit_id = sprintf("L1_%05d", row_number()),
+    source = as.character(source),
+    text_unit,
+    word_count = str_count(text_unit, "\\S+"),
+    char_count = nchar(text_unit)
+  ) |>
+  saveRDS("data_clean/l1_corpus_clean.rds")
+
+message("Saved: data_clean/l1_corpus_clean.rds")
+```
+
+# 4.3. scripts/04_wrangle_current_texts.R
+```{r}
+# ============================================================
+# 04_wrangle_current_texts.R
+# Goal: Freeze human baseline and LLM outputs as clean RDS.
+# Outputs: data_clean/human_baseline_clean.rds, data_clean/basic_texts_clean.rds
+# ============================================================
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(tibble)
+
+dir.create("data_clean", showWarnings = FALSE)
+
+wrangle_texts <- function(files, group, models, ids) {
+  tibble(text_id = ids, group = group, model = models, file_path = files) |>
+    mutate(
+      text = vapply(
+        file_path,
+        \(x) str_squish(read_file(x, locale = locale(encoding = "UTF-8"))),
+        character(1)
+      ),
+      word_count = str_count(text, "\\S+"),
+      char_count = nchar(text)
+    )
+}
+
+wrangle_texts(
+  files  = "outputs_human/HUMAN_BASELINE_001.txt",
+  group  = "human",
+  models = "human",
+  ids    = "HUMAN_BASELINE_001"
+) |> 
+  saveRDS("data_clean/human_baseline_clean.rds")
+
+wrangle_texts(
+  files  = c(
+    "outputs_basic/BASIC_CHATGPT_NATIVE_001.txt",
+    "outputs_basic/BASIC_GEMINI_NATIVE_001.txt",
+    "outputs_basic/BASIC_CLAUDE_NATIVE_001.txt"
+  ),
+  group  = "llm_basic",
+  models = c("chatgpt_native", "gemini_native", "claude_native"),
+  ids    = c(
+    "BASIC_CHATGPT_NATIVE_001",
+    "BASIC_GEMINI_NATIVE_001",
+    "BASIC_CLAUDE_NATIVE_001"
+  )
+) |> 
+  saveRDS("data_clean/basic_texts_clean.rds")
+
+message("Saved: data_clean/human_baseline_clean.rds")
+message("Saved: data_clean/basic_texts_clean.rds")
+```
+# full-text layer
+# → general text-level measures
+
+# paragraph layer
+#  → y4 paragraph overlap
+
+# token layer
+#  → POS / lemma / dependency measures
+
+# 4.4 
+
+```{r}
+# ============================================================
+# 04b_wrangle_paragraph_layer.R
+#
+# Goal:
+#   Create paragraph-level comparison units for y4,
+#   without altering the frozen full-text RDS files.
+#
+# Output:
+#   data_clean/current_paragraph_layer.rds
+# ============================================================
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(tidyr)
+library(purrr)
+
+dir.create("data_clean", showWarnings = FALSE)
+
+human_baseline <- readRDS("data_clean/human_baseline_clean.rds")
+basic_texts    <- readRDS("data_clean/basic_texts_clean.rds")
+
+paragraph_layer <- bind_rows(human_baseline, basic_texts) |>
+  select(text_id, model, file_path) |>
+  mutate(
+    raw_text = map_chr(
+      file_path,
+      \(x) read_file(x, locale = locale(encoding = "UTF-8"))
+    ),
+    raw_text = str_replace_all(raw_text, "\r\n?", "\n"),
+    paragraph_text = str_split(raw_text, "\n\\s*\n+")
+  ) |>
+  select(-raw_text) |>
+  unnest(paragraph_text) |>
+  mutate(
+    paragraph_text = str_squish(paragraph_text),
+    word_count = str_count(paragraph_text, "\\S+"),
+    is_heading = str_detect(paragraph_text, "^#{1,6}\\s+") |
+      (
+        word_count <= 10 &
+        !str_detect(paragraph_text, "[.!?]$")
+      )
+  ) |>
+  filter(
+    paragraph_text != "",
+    !is_heading
+  ) |>
+  group_by(text_id) |>
+  mutate(
+    paragraph_number = row_number(),
+    paragraph_id = sprintf("%s_P%02d", text_id, paragraph_number),
+    char_count = nchar(paragraph_text)
+  ) |>
+  ungroup() |>
+  select(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    paragraph_text,
+    word_count,
+    char_count
+  )
+
+saveRDS(
+  paragraph_layer,
+  "data_clean/current_paragraph_layer.rds"
+)
+
+message("Saved: data_clean/current_paragraph_layer.rds")
+glimpse(paragraph_layer)
+
+paragraph_layer |>
+  count(text_id)
+```
+
+# Modul 4-Check
+```{r}
+library(dplyr)
+library(readr)
+
+readRDS("data_clean/l1_corpus_clean.rds") |> glimpse()
+readRDS("data_clean/human_baseline_clean.rds")
+readRDS("data_clean/basic_texts_clean.rds")
+```
+
+# Modul 4.4 Checks
+
+```{r}
+file.exists("data_clean/current_paragraph_layer.rds")
+```
+# 
+
+```{r}
+paragraph_layer <- readRDS("data_clean/current_paragraph_layer.rds")
+
+paragraph_layer |>
+  count(text_id) |>
+  readr::write_csv("data_clean/current_paragraph_layer_check.csv")
+```
+
+# additional cell text-layer
+
+```{r}
+# ============================================================
+# 04c_wrangle_text_layer_simple.R
+#
+# Goal:
+#   Create a parser-independent text/title/body layer.
+#
+# Inputs:
+#   data_clean/human_baseline_clean.rds
+#   data_clean/basic_texts_clean.rds
+#
+# Output:
+#   data_clean/current_text_layer_simple.rds
+# ============================================================
+
+library(dplyr)
+library(readr)
+library(stringr)
+library(purrr)
+
+dir.create("data_clean", showWarnings = FALSE)
+
+human_baseline <- readRDS("data_clean/human_baseline_clean.rds")
+basic_texts    <- readRDS("data_clean/basic_texts_clean.rds")
+
+read_raw_text <- function(path) {
+  read_file(path, locale = locale(encoding = "UTF-8")) |>
+    str_replace_all("\r\n?", "\n")
+}
+
+extract_title <- function(raw_text) {
+  lines <- str_split(raw_text, "\n")[[1]] |>
+    str_squish()
+  
+  lines <- lines[lines != ""]
+  
+  if (length(lines) == 0) {
+    return(NA_character_)
+  }
+  
+  heading <- lines[str_detect(lines, "^#{1,6}\\s+")]
+  
+  if (length(heading) > 0) {
+    return(
+      heading[1] |>
+        str_remove("^#{1,6}\\s+") |>
+        str_squish()
+    )
+  }
+  
+  first_line <- lines[1]
+  first_line_words <- str_count(first_line, "\\S+")
+  
+  if (first_line_words <= 12 && !str_detect(first_line, "[.!?]$")) {
+    return(first_line)
+  }
+  
+  NA_character_
+}
+
+remove_heading_lines <- function(raw_text) {
+  lines <- str_split(raw_text, "\n")[[1]]
+  clean_lines <- str_squish(lines)
+  
+  # Remove Markdown headings
+  lines <- lines[!str_detect(clean_lines, "^#{1,6}\\s+")]
+  
+  clean_lines <- str_squish(lines)
+  non_empty <- which(clean_lines != "")
+  
+  # Remove first short title-like line if present
+  if (length(non_empty) > 0) {
+    first <- non_empty[1]
+    first_line <- clean_lines[first]
+    first_line_words <- str_count(first_line, "\\S+")
+    
+    if (first_line_words <= 12 && !str_detect(first_line, "[.!?]$")) {
+      lines[first] <- ""
+    }
+  }
+  
+  paste(lines, collapse = "\n") |>
+    str_squish()
+}
+
+current_text_layer_simple <- bind_rows(human_baseline, basic_texts) |>
+  select(text_id, model, file_path) |>
+  mutate(
+    full_text_raw = map_chr(file_path, read_raw_text),
+    title_text = map_chr(full_text_raw, extract_title),
+    body_text = map_chr(full_text_raw, remove_heading_lines),
+    text = body_text,
+    word_count = str_count(body_text, "\\S+"),
+    char_count = nchar(body_text)
+  ) |>
+  select(
+    text_id,
+    model,
+    file_path,
+    title_text,
+    body_text,
+    text,
+    word_count,
+    char_count
+  )
+
+saveRDS(
+  current_text_layer_simple,
+  "data_clean/current_text_layer_simple.rds"
+)
+
+message("Saved: data_clean/current_text_layer_simple.rds")
+
+glimpse(current_text_layer_simple)
+
+current_text_layer_simple |>
+  select(text_id, model, title_text, word_count, char_count)
+file.exists("data_clean/current_text_layer_simple.rds")
+```
+# additional cell simple S-layer
+
+```{r}
+# ============================================================
+# 04d_wrangle_sentence_layer_simple.R
+#
+# Goal:
+#   Create a parser-independent simple sentence layer.
+#
+# Input:
+#   data_clean/current_text_layer_simple.rds
+#
+# Output:
+#   data_clean/current_sentence_layer_simple.rds
+#
+# Important:
+#   This layer is not dependency-parsed.
+#   It is used to keep a parser-independent sentence layer
+#   available for later bag-of-words / cosine comparisons.
+# ============================================================
+
+library(dplyr)
+library(stringr)
+library(tidyr)
+
+current_text_layer_simple <- readRDS(
+  "data_clean/current_text_layer_simple.rds"
+)
+
+current_sentence_layer_simple <- current_text_layer_simple |>
+  mutate(
+    sentence_text = str_split(
+      body_text,
+      "(?<=[.!?])\\s+(?=[A-ZÄÖÜ0-9\"'«„])"
+    )
+  ) |>
+  unnest(sentence_text) |>
+  mutate(
+    sentence_text = str_squish(sentence_text)
+  ) |>
+  filter(sentence_text != "") |>
+  group_by(text_id) |>
+  mutate(
+    sentence_number = row_number(),
+    sentence_uid = sprintf("%s_simpleS%03d", text_id, sentence_number),
+    word_count = str_count(sentence_text, "\\S+"),
+    char_count = nchar(sentence_text)
+  ) |>
+  ungroup() |>
+  select(
+    text_id,
+    model,
+    sentence_uid,
+    sentence_number,
+    title_text,
+    sentence_text,
+    word_count,
+    char_count
+  )
+
+saveRDS(
+  current_sentence_layer_simple,
+  "data_clean/current_sentence_layer_simple.rds"
+)
+
+message("Saved: data_clean/current_sentence_layer_simple.rds")
+
+glimpse(current_sentence_layer_simple)
+
+current_sentence_layer_simple |>
+  count(text_id)
+```
+# simple-S-layer-check
+```{r}
+file.exists("data_clean/current_sentence_layer_simple.rds")
+
+current_sentence_layer_simple <- readRDS(
+  "data_clean/current_sentence_layer_simple.rds"
+)
+
+glimpse(current_sentence_layer_simple)
+
+current_sentence_layer_simple |>
+  count(text_id)
+
+head(current_sentence_layer_simple$sentence_text, 10)
+```
+
+
+# Note: # ============================================================
+# FREEZE NOTE
+# This paragraph layer is now used only for paragraph-level comparison procedures, especially y4: adjacent paragraph all-lemma overlap.
+# Stable output:
+#   data_clean/current_paragraph_layer.rds
+#
+# Verified paragraph counts:
+#   BASIC_CHATGPT_NATIVE_001 = 4
+#   BASIC_CLAUDE_NATIVE_001  = 3
+#   BASIC_GEMINI_NATIVE_001  = 3
+#   HUMAN_BASELINE_001       = 5
+#
+# Do not edit this script again unless paragraph segmentation
+# itself becomes part of the methodological revision.
+
+
+# MODUL 5 - CtoC-Profile generation
+#MODUL 5a
+Parse current texts once with udpipe.
+Output:
+measure_outputs/current_texts_parsed.rds
+
+MODUL 5b
+Compute operational coherence subprofile C_op:
+x1 = parser-filtered chunks
+x2 = PMI/MI-based chunk licensing
+x3 = sentence-to-sentence semantic similarity
+x4 = sentence-to-title semantic similarity
+
+MODUL 5c
+Compute / collect cohesion and interface y-measures:
+y1 = concreteness / imageability
+y2 = content-word / function-word ratio
+y3 = noun / pronoun ratio + noun/pronoun distance ratio
+y4 = already existing adjacent paragraph all-lemma overlap layer
+y5 = optional whole-text all-lemma overlap
+y6 = function-word subtype distribution
+
+MODUL 5d
+#Merge C_op + y-measures into full CtoC-profile table.
+#== = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
+
+# Modul 5a  MODUL 5a — Parses current texts
+
+# MODUL 5a-0 — Package setup
+
+```{r}
+required_packages <- c(
+  "tidyverse",
+  "udpipe",
+  "here"
+)
+
+for (pkg in required_packages) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+}
+
+library(tidyverse)
+library(udpipe)
+library(here)
+```
+
+# 5a)-1 — Setup
+
+```{r}
+#| label: modul5a-setup
+#| message: false
+#| warning: false
+
+library(dplyr)
+library(udpipe)
+
+dir.create("measure_outputs", showWarnings = FALSE)
+dir.create("models", showWarnings = FALSE)
+```
+
+# 5a)-2 — Load clean input texts
+```{r}
+#| label: modul5a-load-clean-inputs
+#| message: false
+#| warning: false
+
+human_baseline <- readRDS("data_clean/human_baseline_clean.rds")
+basic_texts    <- readRDS("data_clean/basic_texts_clean.rds")
+
+all_texts <- bind_rows(human_baseline, basic_texts) |>
+  select(text_id, model, text)
+
+glimpse(all_texts)
+
+# This assumes that both files are simple tibbles, as in your current wrangling script.
+```
+
+# 5a)-3 — Load or download German udpipe model
+```{r}
+#| label: modul5a-load-udpipe-model
+#| message: false
+#| warning: false
+
+model_file <- list.files(
+  "models",
+  pattern = "german-hdt.*\\.udpipe$",
+  full.names = TRUE
+)
+
+if (length(model_file) == 0) {
+  message("Downloading udpipe German model...")
+  
+  model_file <- udpipe_download_model(
+    language = "german-hdt",
+    model_dir = "models"
+  )$file_model
+} else {
+  message("Using existing udpipe German model.")
+  model_file <- model_file[1]
+}
+
+ud_model <- udpipe_load_model(model_file)
+
+#This is slightly better than downloading the model every time.
+```
+
+# 5a)-4 — Parse all current texts
+```{r}
+#| label: modul5a-parse-current-texts
+#| message: false
+#| warning: false
+
+message("Parsing ", nrow(all_texts), " texts...")
+
+annotated_raw <- udpipe_annotate(
+  ud_model,
+  x = all_texts$text,
+  doc_id = all_texts$text_id
+)
+```
+
+# 5a)-5 — Create universal token layer
+
+```{r}
+#| label: modul5a-create-token-layer
+#| message: false
+#| warning: false
+
+current_texts_parsed <- as.data.frame(annotated_raw) |>
+  transmute(
+    text_id = doc_id,
+    paragraph_id,
+    sentence_id,
+    token_id,
+    token,
+    lemma = tolower(lemma),
+    pos = upos,
+    dep_rel,
+    head_token_id
+  )
+
+glimpse(current_texts_parsed)
+```
+
+# 5a)-6 — Save parsed token layer
+```{r}
+#| label: modul5a-save-token-layer
+#| message: false
+#| warning: false
+
+saveRDS(
+  current_texts_parsed,
+  "measure_outputs/current_texts_parsed.rds"
+)
+
+message("Saved: measure_outputs/current_texts_parsed.rds")
+```
+
+# 5a)-7 — Quick verification
+
+```{r}
+#| label: modul5a-check-token-layer
+#| message: false
+#| warning: false
+
+current_texts_parsed |>
+  count(text_id)
+
+current_texts_parsed |>
+  count(text_id, pos) |>
+  arrange(text_id, desc(n))
+```
+# one more check
+```{r}
+current_texts_parsed <- readRDS("measure_outputs/current_texts_parsed.rds")
+
+glimpse(current_texts_parsed)
+count(current_texts_parsed, text_id)
+count(current_texts_parsed, text_id, pos)
+```
+
+# 5a)-8 Creates parsed sentence level layer
+```{r}
+#| label: modul5a2-create-parsed-sentence-layer
+#| message: false
+#| warning: false
+
+current_sentence_layer_parsed <- current_texts_parsed |>
+  mutate(
+    paragraph_id_num = suppressWarnings(as.integer(paragraph_id)),
+    sentence_id_num  = suppressWarnings(as.integer(sentence_id)),
+    token_id_num     = suppressWarnings(as.integer(token_id))
+  ) |>
+  arrange(
+    text_id,
+    paragraph_id_num,
+    sentence_id_num,
+    token_id_num
+  ) |>
+  group_by(text_id, paragraph_id, sentence_id) |>
+  summarise(
+    sentence_text = paste(token, collapse = " "),
+    lemma_text = paste(
+      lemma[!pos %in% c("PUNCT", "SYM")],
+      collapse = " "
+    ),
+    content_lemma_text = paste(
+      lemma[pos %in% c("NOUN", "PROPN", "VERB", "ADJ", "ADV")],
+      collapse = " "
+    ),
+    n_tokens = n(),
+    n_words = sum(!pos %in% c("PUNCT", "SYM")),
+    n_content = sum(pos %in% c("NOUN", "PROPN", "VERB", "ADJ", "ADV")),
+    n_function = sum(pos %in% c("ADP", "CCONJ", "SCONJ", "DET", "PRON", "AUX", "PART")),
+    n_nouns = sum(pos %in% c("NOUN", "PROPN")),
+    n_pronouns = sum(pos == "PRON"),
+    .groups = "drop"
+  ) |>
+  mutate(
+    paragraph_id_num = suppressWarnings(as.integer(paragraph_id)),
+    sentence_id_num  = suppressWarnings(as.integer(sentence_id))
+  ) |>
+  arrange(
+    text_id,
+    paragraph_id_num,
+    sentence_id_num
+  ) |>
+  group_by(text_id) |>
+  mutate(
+    sentence_number = row_number(),
+    sentence_uid = sprintf("%s_parsS%03d", text_id, sentence_number)
+  ) |>
+  ungroup() |>
+  mutate(
+    sentence_text = str_replace_all(sentence_text, "\\s+([,.!?;:])", "\\1"),
+    sentence_text = str_replace_all(sentence_text, "\\(\\s+", "("),
+    sentence_text = str_replace_all(sentence_text, "\\s+\\)", ")"),
+    char_count = nchar(sentence_text)
+  ) |>
+  select(
+    text_id,
+    sentence_uid,
+    sentence_number,
+    paragraph_id,
+    sentence_id,
+    sentence_text,
+    lemma_text,
+    content_lemma_text,
+    n_tokens,
+    n_words,
+    n_content,
+    n_function,
+    n_nouns,
+    n_pronouns,
+    char_count
+  )
+
+glimpse(current_sentence_layer_parsed)
+
+current_sentence_layer_parsed |>
+  count(text_id)
+```
+# 
+``` {r}
+# Rename object clearly
+parsed_S_layer <- current_sentence_layer_parsed
+
+# Optional: remove old confusing object name
+rm(current_sentence_layer_parsed)
+
+# Inspect
+glimpse(parsed_S_layer)
+
+parsed_S_layer |>
+  count(text_id)
+```
+
+# saves the previous 
+
+```{r}
+# ============================================================
+# MODUL 5a — Save parsed layers
+# ============================================================
+
+dir.create("measure_outputs", showWarnings = FALSE, recursive = TRUE)
+
+# Save token-level parsed layer
+saveRDS(
+  current_texts_parsed,
+  "measure_outputs/current_texts_parsed.rds"
+)
+
+# Save sentence-level parsed layer
+saveRDS(
+  parsed_S_layer,
+  "measure_outputs/parsed_S_layer.rds"
+)
+
+message("Saved: measure_outputs/current_texts_parsed.rds")
+message("Saved: measure_outputs/parsed_S_layer.rds")
+```
+
+# some check
+```{r}
+# ============================================================
+# MODUL 5a — Reload check
+# ============================================================
+
+current_texts_parsed_check <- readRDS(
+  "measure_outputs/current_texts_parsed.rds"
+)
+
+parsed_S_layer_check <- readRDS(
+  "measure_outputs/parsed_S_layer.rds"
+)
+
+glimpse(current_texts_parsed_check)
+glimpse(parsed_S_layer_check)
+
+current_texts_parsed_check |>
+  count(text_id)
+
+parsed_S_layer_check |>
+  count(text_id)
+```
+# Modul 5 outputs are reloadable with
+# current_texts_parsed <- readRDS("measure_outputs/current_texts_parsed.rds") parsed_S_layer <- readRDS("measure_outputs/parsed_S_layer.rds")
+
+# prep for IMS
+
+```{r}
+dir.exists("referenz_korpus_input")
+file.exists("referenz_korpus_input/ims_concreteness_lexicon.csv")
+```
+
+```{r}
+list.files(
+  "referenz_korpus_input",
+  recursive = TRUE
+)
+```
+# one more check
+```{r}
+file.exists("referenz_korpus_input/affective_norms.txt.gz")
+```
+
+# Modul 5a-IMS — IMS Psychometric Resource Extractions
+Köper & Schulte im Walde (2016)
+Automatically Generated Norms of Abstractness, Arousal, Imageability and Valence for 350 000 German Lemmas.
+Proceedings of LREC 2016, Portorož, Slovenia.
+The resource provides automatically generated psychometric norms for German lemmas.
+The four dimensions are: abstractness/concreteness, arousal, imageability, and valence.
+* The examples suggest that high values (10) on the abstractness–concreteness scale correspond to more concrete words, while low values correspond to more abstract words (0.). [Link:https://www.ims.uni-stuttgart.de/en/research/resources/experiment-data/affective-norms/] 
+(# IMS resource note: Köper & Schulte im Walde provide automatically generated norms
+for German lemmas on four psycholinguistic dimensions: abstractness-concreteness, arousal, imageability, and valence.
+For y1, we keep AbstConc and IMG separately.
+Based on the authors' examples, higher AbstConc values indicate more concrete/perceivable words, while lower values indicate more abstract words. IMG is treated as imageability.)
+
+# Unpacking data & inspecting it
+```{r}
+# IMS Psychometric Resource Inspection
+
+# Possible locations of the downloaded IMS file
+ims_raw_candidates <- c(
+  "referenz_korpus_input/affective_norms.txt.gz",
+  "affective_norms.txt.gz"
+)
+
+raw_ims_path <- ims_raw_candidates[file.exists(ims_raw_candidates)][1]
+
+if (is.na(raw_ims_path)) {
+  stop(
+    "IMS raw file not found. Expected one of:\n",
+    paste(ims_raw_candidates, collapse = "\n")
+  )
+}
+
+message("Using IMS raw file: ", raw_ims_path)
+
+# Inspect raw first lines
+readr::read_lines(
+  raw_ims_path,
+  n_max = 10
+)
+
+# Read small sample
+ims_sample <- readr::read_delim(
+  raw_ims_path,
+  delim = "\t",
+  n_max = 1000,
+  show_col_types = FALSE
+)
+
+glimpse(ims_sample)
+
+names(ims_sample)
+```
+
+
+```{r}
+
+
+
+
+
+
+```
+
+# IMS Psychometric Resource Extraction
+```{r}
+# IMS Psychometric Resource Extractions
+
+# IMS resource note:
+# Köper & Schulte im Walde provide automatically generated norms
+# for German lemmas on four psycholinguistic dimensions.
+# For the CCP y1 layer, we only extract:
+#   - AbstConc = abstractness-concreteness scale
+#   - IMG      = imageability
+#
+# Based on the authors' examples, higher AbstConc values indicate
+# more concrete/perceivable words, while lower values indicate
+# more abstract words. IMG is treated as imageability.
+#
+# The original AbstConc score is preserved as abstractness_concreteness.
+# For later computation, we additionally create:
+#   - concreteness = abstractness_concreteness
+#   - abstractness_proxy = -abstractness_concreteness
+
+dir.create(
+  "measure_outputs",
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+
+raw_ims_path <- "referenz_korpus_input/affective_norms.txt.gz"
+
+target_ims_rds <- "measure_outputs/ims_psychometric_lexicon_clean.rds"
+target_ims_csv <- "measure_outputs/ims_psychometric_lexicon_clean.csv"
+
+if (!file.exists(raw_ims_path)) {
+  stop(
+    "Raw IMS lexicon missing at: ", raw_ims_path, "\n",
+    "Please place the raw IMS file there before running this cell."
+  )
+}
+
+# Try tab-delimited first; if that does not work, try comma-delimited.
+ims_raw <- readr::read_delim(
+  raw_ims_path,
+  delim = "\t",
+  show_col_types = FALSE
+)
+
+if (ncol(ims_raw) <= 1) {
+  ims_raw <- readr::read_csv(
+    raw_ims_path,
+    show_col_types = FALSE
+  )
+}
+
+# Standardize column names
+clean_column_names <- function(x) {
+  x |>
+    stringr::str_to_lower() |>
+    stringr::str_replace_all("\\s+", "_") |>
+    stringr::str_replace_all("\\.", "_") |>
+    stringr::str_replace_all("[^a-z0-9_]", "_") |>
+    stringr::str_replace_all("_+", "_") |>
+    stringr::str_remove("^_") |>
+    stringr::str_remove("_$")
+}
+
+ims_standard <- ims_raw |>
+  dplyr::rename_with(clean_column_names)
+
+# Helper: find first available column name
+find_first_col <- function(data, candidates) {
+  found <- intersect(candidates, names(data))
+  
+  if (length(found) == 0) {
+    return(NA_character_)
+  }
+  
+  found[1]
+}
+
+lemma_col <- find_first_col(
+  ims_standard,
+  c("lemma", "word", "item", "term")
+)
+
+abstractness_concreteness_col <- find_first_col(
+  ims_standard,
+  c(
+    "abstconc",
+    "abstractness_concreteness",
+    "abstractness_concreteness_score",
+    "concreteness",
+    "concreteness_score",
+    "conc_m",
+    "conc_mean"
+  )
+)
+
+imageability_col <- find_first_col(
+  ims_standard,
+  c(
+    "img",
+    "imageability",
+    "imageability_score",
+    "imag_m",
+    "imag_mean",
+    "image_m",
+    "imagery"
+  )
+)
+
+if (is.na(lemma_col)) {
+  stop(
+    "No lemma/word column found in IMS file. Available columns are:\n",
+    paste(names(ims_standard), collapse = ", ")
+  )
+}
+
+if (is.na(abstractness_concreteness_col)) {
+  stop(
+    "No abstractness-concreteness column found. Expected one of: ",
+    "AbstConc, abstractness_concreteness, concreteness, Conc.M.\n",
+    "Available columns are:\n",
+    paste(names(ims_standard), collapse = ", ")
+  )
+}
+
+if (is.na(imageability_col)) {
+  stop(
+    "No imageability column found. Expected one of: ",
+    "IMG, imageability, Imag.M.\n",
+    "Available columns are:\n",
+    paste(names(ims_standard), collapse = ", ")
+  )
+}
+
+# Helper: safely extract numeric column
+get_numeric_or_na <- function(data, col_name) {
+  if (is.na(col_name)) {
+    return(rep(NA_real_, nrow(data)))
+  }
+  
+  as.numeric(
+    stringr::str_replace(
+      as.character(data[[col_name]]),
+      ",",
+      "."
+    )
+  )
+}
+
+safe_mean <- function(x) {
+  if (length(x) == 0 || all(is.na(x))) {
+    return(NA_real_)
+  }
+  
+  mean(x, na.rm = TRUE)
+}
+
+# Create cleaned lemma-level psychometric lexicon
+ims_psychometric_lexicon_clean <- tibble::tibble(
+  lemma = stringr::str_to_lower(
+    stringr::str_squish(
+      as.character(ims_standard[[lemma_col]])
+    )
+  ),
+  abstractness_concreteness = get_numeric_or_na(
+    ims_standard,
+    abstractness_concreteness_col
+  ),
+  imageability = get_numeric_or_na(
+    ims_standard,
+    imageability_col
+  )
+) |>
+  dplyr::filter(
+    !is.na(lemma),
+    lemma != ""
+  ) |>
+  dplyr::group_by(lemma) |>
+  dplyr::summarise(
+    abstractness_concreteness = safe_mean(abstractness_concreteness),
+    imageability = safe_mean(imageability),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    concreteness = abstractness_concreteness,
+    abstractness_proxy = dplyr::case_when(
+      !is.na(abstractness_concreteness) ~ -abstractness_concreteness,
+      TRUE ~ NA_real_
+    )
+  ) |>
+  dplyr::select(
+    lemma,
+    abstractness_concreteness,
+    concreteness,
+    imageability,
+    abstractness_proxy
+  )
+
+# Save full psychometric lexicon into measure_outputs
+saveRDS(
+  ims_psychometric_lexicon_clean,
+  target_ims_rds
+)
+
+readr::write_csv(
+  ims_psychometric_lexicon_clean,
+  target_ims_csv
+)
+
+message("Saved: ", target_ims_rds)
+message("Saved: ", target_ims_csv)
+
+# Save separate dictionaries
+
+ims_dictionary_concreteness <- ims_psychometric_lexicon_clean |>
+  dplyr::select(lemma, concreteness) |>
+  dplyr::filter(!is.na(concreteness))
+
+saveRDS(
+  ims_dictionary_concreteness,
+  "measure_outputs/ims_dictionary_concreteness.rds"
+)
+
+readr::write_csv(
+  ims_dictionary_concreteness,
+  "measure_outputs/ims_dictionary_concreteness.csv"
+)
+
+message("Saved: measure_outputs/ims_dictionary_concreteness.rds")
+message("Saved: measure_outputs/ims_dictionary_concreteness.csv")
+
+
+ims_dictionary_imageability <- ims_psychometric_lexicon_clean |>
+  dplyr::select(lemma, imageability) |>
+  dplyr::filter(!is.na(imageability))
+
+saveRDS(
+  ims_dictionary_imageability,
+  "measure_outputs/ims_dictionary_imageability.rds"
+)
+
+readr::write_csv(
+  ims_dictionary_imageability,
+  "measure_outputs/ims_dictionary_imageability.csv"
+)
+
+message("Saved: measure_outputs/ims_dictionary_imageability.rds")
+message("Saved: measure_outputs/ims_dictionary_imageability.csv")
+
+
+ims_dictionary_abstractness_proxy <- ims_psychometric_lexicon_clean |>
+  dplyr::select(lemma, abstractness_proxy) |>
+  dplyr::filter(!is.na(abstractness_proxy))
+
+saveRDS(
+  ims_dictionary_abstractness_proxy,
+  "measure_outputs/ims_dictionary_abstractness_proxy.rds"
+)
+
+readr::write_csv(
+  ims_dictionary_abstractness_proxy,
+  "measure_outputs/ims_dictionary_abstractness_proxy.csv"
+)
+
+message("Saved: measure_outputs/ims_dictionary_abstractness_proxy.rds")
+message("Saved: measure_outputs/ims_dictionary_abstractness_proxy.csv")
+
+dplyr::glimpse(ims_psychometric_lexicon_clean)
+```
+
+
+
+
+
+
+# MODUL 7
+#Human–LLM comparison, delta vectors, plots, thesis reporting.
+
+#
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+```{r}
+1 + 1
+```
+
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+# 
+
+```{r}
+1 + 1
+```
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).

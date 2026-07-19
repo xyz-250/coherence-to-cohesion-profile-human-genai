@@ -1,0 +1,5 @@
+text_id,source_type,model_family,model_id,heading_id,heading_level,heading_type,heading_text
+HUMAN_BASELINE_001,human,NA,NA,H01,2,main_title,Digitalisierung der Arbeitswelt
+HUMAN_BASELINE_001,human,NA,NA,H02,1,section_title,Digitalisierung – die Sorge um den Arbeitsplatz
+HUMAN_BASELINE_001,human,NA,NA,H03,1,section_title,Fortschritt erfordert Anpassung
+HUMAN_BASELINE_001,human,NA,NA,H04,1,section_title,Mit menschlichen Qualitäten erfolgreich in der Zukunft

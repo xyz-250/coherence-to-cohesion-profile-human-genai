@@ -1,0 +1,14 @@
+metric,value
+n_documents,2004
+n_leipzig_documents,1909
+n_falko_documents,95
+n_sentences,5252
+n_leipzig_sentences,1939
+n_falko_sentences,3313
+n_documents_without_sentences,0
+n_sentences_without_documents,0
+n_empty_sentences,0
+n_empty_document_texts,0
+n_duplicated_document_uids,0
+n_duplicated_sentence_uids,0
+n_nonconsecutive_sentence_sequences,0

@@ -1,0 +1,9 @@
+metric,value
+n_source_workbooks,95
+n_metadata_records,95
+n_reconstructed_documents,95
+n_text_sheet_token_rows,70615
+n_nonempty_tokens,68480
+n_missing_metadata_ids,0
+n_missing_workbook_ids,0
+n_empty_documents,0

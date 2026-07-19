@@ -1,0 +1,7 @@
+model,connector_type,x3co_human_aligned_transition_similarity_mean,x3co_human_aligned_transition_similarity_sd,n_valid_x3co_human_aligned_transitions
+chatgpt_native,CCONJ,0.24556754069807735,0.40337489026717144,21
+chatgpt_native,SCONJ,0.37027474110164255,0.4931899853282247,20
+claude_native,CCONJ,0.32993204161933737,0.45412741944827345,19
+claude_native,SCONJ,0.2589084465786906,0.5148690045172534,7
+gemini_native,CCONJ,0.342314262736937,0.4077571977251212,21
+gemini_native,SCONJ,0.24100401388463005,0.3954323085247282,13

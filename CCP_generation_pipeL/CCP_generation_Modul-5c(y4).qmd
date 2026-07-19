@@ -1,0 +1,1228 @@
+---
+title: "CCP_generation_Modul_5c(y4)"
+subtitle: "Adjacent Paragraph Lemma Overlap"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    code-tools: true
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# MODUL 5c — Adjacent paragraph lemma overlap
+
+This module computes the cohesion measure \(y_4\).
+
+The measure captures lexical continuity between adjacent paragraphs by
+calculating all-lemma overlap between paragraph \(P_i\) and paragraph
+\(P_{i+1}\).
+
+The module reads existing prepared outputs and does not regenerate any
+previous CCP layers.
+
+# MODUL 5c 1 — Setup
+
+```{r}
+# MODUL 5c1 — Setup
+
+# MODUL 5c1 — Setup
+
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(readr)
+library(stringr)
+library(tibble)
+
+data_prep_dir <- "../data_prep_CCP_output"
+module_5b_output_dir <- "../measure_outputs"
+module_5c_output_dir <- "../measure_outputs"
+
+dir.create(
+  module_5c_output_dir,
+  showWarnings = FALSE,
+  recursive = TRUE
+)
+```
+
+# MODUL 5c2 — Read prepared parsed token data
+
+```{r}
+# MODUL 5c2 — Read prepared parsed token data
+
+current_texts_parsed <- readRDS(
+  file.path(
+    data_prep_dir,
+    "current_texts_parsed.rds"
+  )
+)
+
+current_texts_parsed
+```
+
+# MODUL 5c3 — Read completed MODUL 5b profile
+
+```{r}
+# MODUL 5c3 — Read completed MODUL 5b profile
+
+ccp_module_5b <- readRDS(
+  file.path(
+    module_5b_output_dir,
+    "ccp_module_5b_tokens.rds"
+  )
+)
+
+ccp_module_5b
+```
+# Inspection cell
+
+```{r}
+# Inspect available column names
+
+names(current_texts_parsed)
+
+grep(
+  "lemma|token|paragraph|sentence|pos",
+  names(current_texts_parsed),
+  value = TRUE,
+  ignore.case = TRUE
+)
+```
+# 
+
+```{r}
+# MODUL 5c4 — Inspect available prepared files
+
+list.files(
+  data_prep_dir,
+  full.names = FALSE
+)
+```
+
+# MODUL 5c4 — Read preserved paragraph layer
+
+```{r}
+# MODUL 5c4 — Read preserved paragraph layer
+
+current_paragraph_layer <- readRDS(
+  file.path(
+    data_prep_dir,
+    "current_paragraph_layer.rds"
+  )
+)
+
+glimpse(current_paragraph_layer)
+
+names(current_paragraph_layer)
+
+current_paragraph_layer |>
+  slice_head(n = 20)
+```
+
+
+# 
+
+```{r}
+# MODUL 5c5 — 
+# MODUL 5c5 — Check preserved paragraph structure
+
+names(current_paragraph_layer)
+
+y4_paragraph_structure <- current_paragraph_layer |>
+  group_by(text_id) |>
+  summarise(
+    n_paragraphs = n(),
+    n_adjacent_paragraph_pairs = pmax(n_paragraphs - 1L, 0L),
+    .groups = "drop"
+  )
+
+print(y4_paragraph_structure)
+
+
+```
+
+
+# 
+
+```{r}
+# MODUL 5c8 — Load German UDPipe model
+
+library(udpipe)
+
+model_dir <- "../models"
+
+model_file <- list.files(
+  model_dir,
+  pattern = "german-hdt.*\\.udpipe$",
+  full.names = TRUE
+)
+
+if (length(model_file) == 0) {
+  stop(
+    "German UDPipe model not found in: ",
+    normalizePath(model_dir, mustWork = FALSE)
+  )
+}
+
+model_file <- model_file[1]
+
+cat("Using UDPipe model:\n")
+cat(normalizePath(model_file), "\n")
+
+ud_model <- udpipe_load_model(model_file)
+```
+```{r}
+# MODUL 5c9 — Parse preserved paragraph texts
+
+message(
+  "Parsing ",
+  nrow(current_paragraph_layer),
+  " preserved paragraphs..."
+)
+
+y4_paragraphs_annotated_raw <- udpipe_annotate(
+  ud_model,
+  x = current_paragraph_layer$paragraph_text,
+  doc_id = current_paragraph_layer$paragraph_id
+)
+
+y4_paragraphs_parsed <- as.data.frame(
+  y4_paragraphs_annotated_raw
+)
+
+glimpse(y4_paragraphs_parsed)
+```
+# 
+```{r}
+# MODUL 5c10 — Reconnect parsed lemmas to paragraph metadata
+
+y4_paragraph_tokens <- y4_paragraphs_parsed |>
+  rename(
+    paragraph_id = doc_id,
+    udpipe_paragraph_id = paragraph_id
+  ) |>
+  left_join(
+    current_paragraph_layer |>
+      select(
+        text_id,
+        model,
+        paragraph_id,
+        paragraph_number
+      ),
+    by = "paragraph_id"
+  ) |>
+  select(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    sentence_id,
+    token_id,
+    token,
+    lemma,
+    upos
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number,
+    sentence_id,
+    suppressWarnings(as.integer(token_id))
+  )
+
+glimpse(y4_paragraph_tokens)
+```
+#
+
+```{r}
+ # MODUL 5c11 — Check paragraph metadata join
+
+y4_join_check <- y4_paragraph_tokens |>
+  summarise(
+    n_tokens = n(),
+    n_missing_text_id = sum(is.na(text_id)),
+    n_missing_paragraph_number = sum(is.na(paragraph_number))
+  )
+
+print(y4_join_check)
+```
+# 
+
+```{r}
+# MODUL 5c12 — Create all-word-lemma layer
+
+y4_all_lemma_tokens <- y4_paragraph_tokens |>
+  mutate(
+    lemma_y4 = lemma |>
+      as.character() |>
+      str_to_lower() |>
+      str_squish()
+  ) |>
+  filter(
+    !is.na(lemma_y4),
+    lemma_y4 != "",
+    lemma_y4 != "null",
+    upos != "PUNCT"
+  ) |>
+  select(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    sentence_id,
+    token_id,
+    token,
+    lemma_y4,
+    upos
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number,
+    sentence_id,
+    suppressWarnings(as.integer(token_id))
+  )
+
+glimpse(y4_all_lemma_tokens)
+```
+#
+
+```{r}
+sum(y4_all_lemma_tokens$upos == "PUNCT")
+```
+
+#
+
+```{r}
+# MODUL 5c13 — Build paragraph lemma sets
+
+y4_paragraph_lemma_sets <- y4_all_lemma_tokens |>
+  group_by(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number
+  ) |>
+  summarise(
+    n_lemma_tokens = n(),
+    n_unique_lemmas = n_distinct(lemma_y4),
+    lemma_set = list(sort(unique(lemma_y4))),
+    .groups = "drop"
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number
+  )
+
+y4_paragraph_lemma_sets |>
+  select(
+    text_id,
+    paragraph_id,
+    paragraph_number,
+    n_lemma_tokens,
+    n_unique_lemmas
+  ) |>
+  print(n = Inf)
+```
+
+#
+
+```{r}
+# MODUL 5c14 — Create adjacent paragraph pairs
+
+y4_adjacent_paragraph_pairs <- y4_paragraph_lemma_sets |>
+  arrange(
+    text_id,
+    paragraph_number
+  ) |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  mutate(
+    next_paragraph_id = lead(paragraph_id),
+    next_paragraph_number = lead(paragraph_number),
+    next_n_lemma_tokens = lead(n_lemma_tokens),
+    next_n_unique_lemmas = lead(n_unique_lemmas),
+    next_lemma_set = lead(lemma_set)
+  ) |>
+  filter(
+    !is.na(next_paragraph_id)
+  ) |>
+  ungroup()
+
+y4_adjacent_paragraph_pairs |>
+  select(
+    text_id,
+    paragraph_id,
+    paragraph_number,
+    next_paragraph_id,
+    next_paragraph_number,
+    n_unique_lemmas,
+    next_n_unique_lemmas
+  ) |>
+  print(n = Inf, width = Inf)
+```
+
+
+#
+
+```{r}
+y4_adjacent_paragraph_pairs |>
+  count(
+    text_id,
+    name = "n_adjacent_paragraph_pairs"
+  )
+```
+# y4 - Computation
+
+```{r}
+# MODUL 5c15 — Compute adjacent-paragraph lemma overlap
+
+y4_pairwise_overlap <- y4_adjacent_paragraph_pairs |>
+  mutate(
+    shared_lemmas = map2(
+      lemma_set,
+      next_lemma_set,
+      intersect
+    ),
+    union_lemmas = map2(
+      lemma_set,
+      next_lemma_set,
+      union
+    ),
+    n_shared_lemmas = map_int(
+      shared_lemmas,
+      length
+    ),
+    n_union_lemmas = map_int(
+      union_lemmas,
+      length
+    ),
+    y4_jaccard_overlap = if_else(
+      n_union_lemmas > 0,
+      n_shared_lemmas / n_union_lemmas,
+      NA_real_
+    ),
+    y4_smaller_set_overlap = if_else(
+      pmin(
+        n_unique_lemmas,
+        next_n_unique_lemmas
+      ) > 0,
+      n_shared_lemmas /
+        pmin(
+          n_unique_lemmas,
+          next_n_unique_lemmas
+        ),
+      NA_real_
+    )
+  )
+
+y4_pairwise_overlap |>
+  select(
+    text_id,
+    paragraph_id,
+    next_paragraph_id,
+    n_unique_lemmas,
+    next_n_unique_lemmas,
+    n_shared_lemmas,
+    n_union_lemmas,
+    y4_jaccard_overlap,
+    y4_smaller_set_overlap
+  ) |>
+  print(
+    n = Inf,
+    width = Inf
+  )
+```
+
+#
+
+```{r}
+# MODUL 5c16 — Summarise y4 by text
+
+y4_text_profile <- y4_pairwise_overlap |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  summarise(
+    n_adjacent_paragraph_pairs = n(),
+    y4_adjacent_paragraph_overlap_mean = mean(
+      y4_jaccard_overlap,
+      na.rm = TRUE
+    ),
+    y4_adjacent_paragraph_overlap_min = min(
+      y4_jaccard_overlap,
+      na.rm = TRUE
+    ),
+    y4_adjacent_paragraph_overlap_max = max(
+      y4_jaccard_overlap,
+      na.rm = TRUE
+    ),
+    y4_smaller_set_overlap_mean = mean(
+      y4_smaller_set_overlap,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+print(y4_text_profile, width = Inf)
+```
+```{r}
+# MODUL 5c16 — Create content-word lemma layer
+
+y4_content_lemma_tokens <- y4_paragraph_tokens |>
+  mutate(
+    lemma_y4_content = lemma |>
+      as.character() |>
+      str_to_lower() |>
+      str_squish()
+  ) |>
+  filter(
+    !is.na(lemma_y4_content),
+    lemma_y4_content != "",
+    lemma_y4_content != "null",
+    upos %in% c("NOUN", "VERB", "ADJ", "ADV")
+  ) |>
+  select(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    sentence_id,
+    token_id,
+    token,
+    lemma_y4_content,
+    upos
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number,
+    sentence_id,
+    suppressWarnings(as.integer(token_id))
+  )
+
+glimpse(y4_content_lemma_tokens)
+```
+
+```{r}
+# MODUL 5c17 — Build content-word lemma sets
+
+y4_content_paragraph_sets <- y4_content_lemma_tokens |>
+  group_by(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number
+  ) |>
+  summarise(
+    n_content_lemma_tokens = n(),
+    n_unique_content_lemmas = n_distinct(lemma_y4_content),
+    content_lemma_set = list(sort(unique(lemma_y4_content))),
+    .groups = "drop"
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number
+  )
+```
+
+#
+
+```{r}
+# MODUL 5c18 — Compute adjacent content-word overlap
+
+y4_content_pairwise_overlap <- y4_content_paragraph_sets |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  arrange(
+    paragraph_number,
+    .by_group = TRUE
+  ) |>
+  mutate(
+    next_paragraph_id = lead(paragraph_id),
+    next_paragraph_number = lead(paragraph_number),
+    next_n_unique_content_lemmas = lead(n_unique_content_lemmas),
+    next_content_lemma_set = lead(content_lemma_set)
+  ) |>
+  filter(
+    !is.na(next_paragraph_id)
+  ) |>
+  ungroup() |>
+  mutate(
+    shared_content_lemmas = map2(
+      content_lemma_set,
+      next_content_lemma_set,
+      intersect
+    ),
+    union_content_lemmas = map2(
+      content_lemma_set,
+      next_content_lemma_set,
+      union
+    ),
+    n_shared_content_lemmas = map_int(
+      shared_content_lemmas,
+      length
+    ),
+    n_union_content_lemmas = map_int(
+      union_content_lemmas,
+      length
+    ),
+    y4_content_jaccard = if_else(
+      n_union_content_lemmas > 0,
+      n_shared_content_lemmas / n_union_content_lemmas,
+      NA_real_
+    ),
+    y4_content_smaller_set_overlap = if_else(
+      pmin(
+        n_unique_content_lemmas,
+        next_n_unique_content_lemmas
+      ) > 0,
+      n_shared_content_lemmas /
+        pmin(
+          n_unique_content_lemmas,
+          next_n_unique_content_lemmas
+        ),
+      NA_real_
+    )
+  )
+```
+
+#
+
+
+```{r}
+# MODUL 5c19 — Summarise content-word y4
+
+y4_content_text_profile <- y4_content_pairwise_overlap |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  summarise(
+    n_adjacent_paragraph_pairs = n(),
+    y4_content_overlap_mean = mean(
+      y4_content_jaccard,
+      na.rm = TRUE
+    ),
+    y4_content_overlap_min = min(
+      y4_content_jaccard,
+      na.rm = TRUE
+    ),
+    y4_content_overlap_max = max(
+      y4_content_jaccard,
+      na.rm = TRUE
+    ),
+    y4_content_smaller_set_overlap_mean = mean(
+      y4_content_smaller_set_overlap,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+print(y4_content_text_profile, width = Inf)
+```
+#
+
+```{r}
+y4_comparison_table <- y4_text_profile |>
+  select(
+    text_id,
+    model,
+    y4_all_lemma_overlap_mean =
+      y4_adjacent_paragraph_overlap_mean
+  ) |>
+  left_join(
+    y4_content_text_profile |>
+      select(
+        text_id,
+        y4_content_overlap_mean
+      ),
+    by = "text_id"
+  )
+
+print(y4_comparison_table, width = Inf)
+```
+# MODUL 5c20 — Create paragraph lemma–POS sets
+
+```{r}
+# MODUL 5c20 — Create paragraph lemma–POS sets
+
+y4_paragraph_lemma_pos <- y4_all_lemma_tokens |>
+  distinct(
+    text_id,
+    model,
+    paragraph_id,
+    paragraph_number,
+    lemma_y4,
+    upos
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number,
+    lemma_y4,
+    upos
+  )
+
+glimpse(y4_paragraph_lemma_pos)
+```
+
+# MODUL 5c20 — Create paragraph lemma–POS sets
+
+```{r}
+# MODUL 5c21 — Identify lemmas shared by adjacent paragraphs
+
+y4_transferred_lemmas <- y4_paragraph_lemma_pos |>
+  transmute(
+    text_id,
+    model,
+    paragraph_id_1 = paragraph_id,
+    paragraph_number_1 = paragraph_number,
+    lemma = lemma_y4,
+    upos
+  ) |>
+  inner_join(
+    y4_paragraph_lemma_pos |>
+      transmute(
+        text_id,
+        paragraph_id_2 = paragraph_id,
+        paragraph_number_2 = paragraph_number,
+        lemma = lemma_y4,
+        upos
+      ),
+    by = c(
+      "text_id",
+      "lemma",
+      "upos"
+    ),
+    relationship = "many-to-many"
+  ) |>
+  filter(
+    paragraph_number_2 == paragraph_number_1 + 1L
+  ) |>
+  mutate(
+    lemma_group = case_when(
+      upos %in% c("NOUN", "VERB", "ADJ", "ADV") ~
+        "content_word",
+      upos == "PRON" ~
+        "pronoun",
+      TRUE ~
+        "other_function_word"
+    )
+  ) |>
+  distinct(
+    text_id,
+    model,
+    paragraph_id_1,
+    paragraph_number_1,
+    paragraph_id_2,
+    paragraph_number_2,
+    lemma,
+    upos,
+    lemma_group
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number_1,
+    lemma_group,
+    upos,
+    lemma
+  )
+
+glimpse(y4_transferred_lemmas)
+```
+# Note: P01 → P02
+P02 → P03
+P03 → P04
+...
+
+# MODUL 5c22 — Count transferred lemmas by category
+
+```{r}
+# MODUL 5c22 — Count transferred lemmas by category
+
+y4_transfer_by_group <- y4_transferred_lemmas |>
+  count(
+    text_id,
+    model,
+    paragraph_id_1,
+    paragraph_id_2,
+    lemma_group,
+    name = "n_shared_lemmas"
+  ) |>
+  tidyr::pivot_wider(
+    names_from = lemma_group,
+    values_from = n_shared_lemmas,
+    values_fill = 0,
+    names_prefix = "n_shared_"
+  )
+
+print(
+  y4_transfer_by_group,
+  n = Inf,
+  width = Inf
+)
+```
+# Note: This shows, for each paragraph transition:
+
+n_shared_content_word
+n_shared_pronoun
+n_shared_other_function_word
+
+
+# Note: Here, n_adjacent_transitions tells us across how many paragraph boundaries a lemma was transferred. For example:
+Arbeit       NOUN   3 transitions
+Digitalisierung NOUN 2 transitions
+verändern    VERB   2 transitions
+
+# 
+# 
+
+```{r}
+# MODUL 5c23 — Compact noun, pronoun, and adverb diagnostics
+
+pron_classification <- tribble(
+  ~upos,   ~lemma,  ~pronoun_form_group,
+  "PRON",  "die",   "potential_nominal_or_relative_reference",
+  "PRON",  "sein",  "potential_possessive_reference",
+  "PRON",  "es",    "referential_or_nonreferential_ambiguous",
+  "PRON",  "sich",  "reflexive",
+  "PRON",  "wir",   "speaker_group_reference",
+  "PRON",  "unser", "speaker_group_possessive_reference",
+  "PRON",  "man",   "indefinite_generic_reference",
+  "PRON",  "wer",   "interrogative_or_relative_reference",
+  "PRON",  "was",   "interrogative_relative_or_propositional_reference"
+)
+
+y4_handover_diagnostics <- y4_transferred_lemmas |>
+  left_join(
+    pron_classification,
+    by = c("upos", "lemma")
+  ) |>
+  count(
+    text_id,
+    model,
+    upos,
+    lemma,
+    pronoun_form_group,
+    name = "n_adjacent_transitions"
+  )
+
+y4_handover_summary <- y4_handover_diagnostics |>
+  group_by(
+    text_id,
+    model
+  ) |>
+  summarise(
+    noun_transition_sum = sum(
+      n_adjacent_transitions[upos == "NOUN"]
+    ),
+    pronoun_transition_sum = sum(
+      n_adjacent_transitions[upos == "PRON"]
+    ),
+    adverb_transition_sum = sum(
+      n_adjacent_transitions[upos == "ADV"]
+    ),
+    potential_nominal_reference_transition_sum = sum(
+      n_adjacent_transitions[
+        pronoun_form_group %in% c(
+          "potential_nominal_or_relative_reference",
+          "potential_possessive_reference"
+        )
+      ],
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    noun_to_potential_pronoun_ratio = if_else(
+      potential_nominal_reference_transition_sum > 0,
+      noun_transition_sum /
+        potential_nominal_reference_transition_sum,
+      NA_real_
+    )
+  )
+
+print(
+  y4_handover_summary,
+  n = Inf,
+  width = Inf
+)
+```
+
+# Inspect exact transferred NOUN, PRON, and ADV lemmas
+
+```{r}
+# Inspect exact transferred NOUN, PRON, and ADV lemmas
+
+y4_handover_diagnostics |>
+  filter(
+    upos %in% c("NOUN", "PRON", "ADV")
+  ) |>
+  arrange(
+    text_id,
+    upos,
+    desc(n_adjacent_transitions),
+    lemma
+  ) |>
+  print(
+    n = Inf,
+    width = Inf
+  )
+```
+# Note: What the additional diagnostics can establish
+
+They establish:
+
+whether paragraph overlap is carried mainly by general lexical recurrence or by content words;
+which nouns, pronouns, and adverbs recur across paragraph boundaries;
+whether noun or pronoun forms dominate the transferred referential inventory;
+whether the pattern changes across paragraph positions.
+
+They do not establish:
+
+that a repeated pronoun refers to the same antecedent;
+that a repeated noun should have been replaced by a pronoun;
+actual anaphora resolution;
+a Given/New violation;
+semantic continuity expressed through paraphrase.
+
+The noun–pronoun ratio is therefore a paragraph-boundary referential-form diagnostic, not a coreference measure.
+
+# MODUL 5c24 — Final y4 profile
+
+```{r}
+
+# MODUL 5c24 — Final y4 profile (old: # MODUL 5c24 — Merge final y4 bundle) with lesser columns
+# MODUL 5c24 — Final y4 profile
+
+ccp_module_5c_y4 <- y4_comparison_table |>
+  left_join(
+    y4_paragraph_structure,
+    by = "text_id"
+  ) |>
+  left_join(
+    y4_handover_summary,
+    by = c("text_id", "model")
+  ) |>
+  select(
+    text_id,
+    model,
+    n_paragraphs,
+    n_adjacent_paragraph_pairs,
+    y4_all_lemma_overlap_mean,
+    y4_content_overlap_mean,
+    noun_transition_sum,
+    pronoun_transition_sum,
+    adverb_transition_sum,
+    potential_nominal_reference_transition_sum,
+    noun_to_potential_pronoun_ratio
+  ) |>
+  arrange(text_id)
+
+print(
+  ccp_module_5c_y4,
+  n = Inf,
+  width = Inf
+)
+```
+
+# Note — Contents of the \(y_4\) bundle
+The compact \(y_4\) output contains the paragraph count, the number of adjacent paragraph transitions, mean all-lemma and content-word Jaccard overlap, noun/pronoun/adverb transfer totals and means per transition, and the noun-to-potential-pronoun referential-form diagnostic.
+
+# MODUL 5c25 — Pairwise and lemma-level diagnostics
+
+```{r}
+# MODUL 5c25 — Pairwise and lemma-level diagnostics
+
+pair_keys <- c(
+  "text_id",
+  "model",
+  "paragraph_id",
+  "paragraph_number",
+  "next_paragraph_id",
+  "next_paragraph_number"
+)
+
+ccp_module_5c_y4_pairwise <- y4_pairwise_overlap |>
+  select(
+    all_of(pair_keys),
+    n_unique_lemmas,
+    next_n_unique_lemmas,
+    n_shared_lemmas,
+    n_union_lemmas,
+    y4_jaccard_overlap
+  ) |>
+  left_join(
+    y4_content_pairwise_overlap |>
+      select(
+        all_of(pair_keys),
+        n_unique_content_lemmas,
+        next_n_unique_content_lemmas,
+        n_shared_content_lemmas,
+        n_union_content_lemmas,
+        y4_content_jaccard
+      ),
+    by = pair_keys
+  ) |>
+  left_join(
+    y4_transfer_by_group,
+    by = c(
+      "text_id",
+      "model",
+      "paragraph_id" = "paragraph_id_1",
+      "next_paragraph_id" = "paragraph_id_2"
+    )
+  ) |>
+  mutate(
+    across(
+      starts_with("n_shared_"),
+      ~ replace_na(.x, 0L)
+    )
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number
+  )
+
+ccp_module_5c_y4_lemma_audit <- y4_transferred_lemmas |>
+  left_join(
+    pron_classification,
+    by = c("upos", "lemma")
+  ) |>
+  group_by(
+    text_id,
+    model,
+    upos,
+    lemma
+  ) |>
+  mutate(
+    n_adjacent_transitions = n()
+  ) |>
+  ungroup() |>
+  select(
+    text_id,
+    model,
+    paragraph_id_1,
+    paragraph_number_1,
+    paragraph_id_2,
+    paragraph_number_2,
+    lemma,
+    upos,
+    lemma_group,
+    pronoun_form_group,
+    n_adjacent_transitions
+  ) |>
+  arrange(
+    text_id,
+    paragraph_number_1,
+    upos,
+    lemma
+  )
+```
+
+# MODUL 5c26 — Validate and export y4 outputs
+
+```{r}
+# MODUL 5c26 — Validate and export y4 outputs
+
+stopifnot(
+  nrow(ccp_module_5c_y4) == 4,
+  !anyDuplicated(ccp_module_5c_y4$text_id),
+  nrow(ccp_module_5c_y4_pairwise) == 11,
+  all(
+    ccp_module_5c_y4$n_adjacent_paragraph_pairs ==
+      ccp_module_5c_y4$n_paragraphs - 1L
+  ),
+  all(
+    ccp_module_5c_y4$n_adjacent_paragraph_pairs > 0
+  )
+)
+
+outputs_to_save <- list(
+  ccp_module_5c_y4 =
+    ccp_module_5c_y4,
+  ccp_module_5c_y4_pairwise =
+    ccp_module_5c_y4_pairwise,
+  ccp_module_5c_y4_lemma_audit =
+    ccp_module_5c_y4_lemma_audit
+)
+
+iwalk(
+  outputs_to_save,
+  \(object, name) {
+    saveRDS(
+      object,
+      file.path(
+        module_5c_output_dir,
+        paste0(name, ".rds")
+      )
+    )
+
+    write_csv(
+      object,
+      file.path(
+        module_5c_output_dir,
+        paste0(name, ".csv")
+      ),
+      na = ""
+    )
+
+    message(
+      "Saved: ",
+      name,
+      ".rds/.csv"
+    )
+  }
+)
+```
+# END-------------------
+
+# ANALYTICS = > PLOTTING
+
+#
+# Load frozen y4 outputs
+
+```{r}
+
+if (!exists("ccp_module_5c_y4")) {
+  y4_profile_path <- file.path(
+    module_5c_output_dir,
+    "ccp_module_5c_y4.rds"
+  )
+
+  if (!file.exists(y4_profile_path)) {
+    stop("Run MODUL 5c24 and MODUL 5c26 first.")
+  }
+
+  ccp_module_5c_y4 <- readRDS(
+    y4_profile_path
+  )
+}
+
+if (!exists("ccp_module_5c_y4_pairwise")) {
+  y4_pairwise_path <- file.path(
+    module_5c_output_dir,
+    "ccp_module_5c_y4_pairwise.rds"
+  )
+
+  if (!file.exists(y4_pairwise_path)) {
+    stop("Run MODUL 5c25 and MODUL 5c26 first.")
+  }
+
+  ccp_module_5c_y4_pairwise <- readRDS(
+    y4_pairwise_path
+  )
+}
+
+```
+
+#
+
+```{r}
+
+# MODUL 5c27 — Plot y4 decay
+
+library(ggplot2)
+library(ggrepel)
+
+module_5c_output_dir <- "../measure_outputs"
+
+ccp_module_5c_y4_pairwise <- readRDS(
+  file.path(
+    module_5c_output_dir,
+    "ccp_module_5c_y4_pairwise.rds"
+  )
+)
+
+y4_plot_data <- ccp_module_5c_y4_pairwise |>
+  dplyr::group_by(text_id, model) |>
+  dplyr::arrange(paragraph_number, .by_group = TRUE) |>
+  dplyr::mutate(
+    normalized_position =
+      (dplyr::row_number() - 1) /
+      pmax(dplyr::n() - 1, 1),
+    value_label = sprintf("%.3f", y4_jaccard_overlap)
+  ) |>
+  dplyr::ungroup()
+
+y4_decay_plot <- ggplot(
+  y4_plot_data,
+  aes(normalized_position, y4_jaccard_overlap)
+) +
+  geom_line(
+    aes(group = text_id, colour = model),
+    alpha = 0.6
+  ) +
+  geom_point(
+    aes(colour = model),
+    size = 2.5
+  ) +
+  ggrepel::geom_text_repel(
+    aes(label = value_label, colour = model),
+    size = 3,
+    show.legend = FALSE,
+    max.overlaps = Inf,
+    seed = 20260714
+  ) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = FALSE,
+    colour = "black",
+    linetype = "dashed"
+  ) +
+  facet_wrap(~ text_id, nrow = 2) +
+  labs(
+    x = "Normalized paragraph-transition position",
+    y = "Jaccard lemma overlap (y4)",
+  title = "Adjacent-paragraph lemma-overlap decay",
+  subtitle = "Points: individual paragraph transitions; dashed line: linear trend over normalized position"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+ggsave(
+  file.path(
+    module_5c_output_dir,
+    "y4_overlap_decay_plot.png"
+  ),
+  plot = y4_decay_plot,
+  width = 10,
+  height = 6,
+  dpi = 300
+)
+
+y4_decay_plot
+```
+
+
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).

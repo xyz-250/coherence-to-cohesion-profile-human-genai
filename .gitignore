@@ -1,0 +1,24 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# macOS
+.DS_Store
+
+# R / RStudio
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Environment secrets
+.Renviron
+
+# Large external Leipzig corpus files
+referenz_korpus_input/downloads/deu_news_2023_1M/
+referenz_korpus_input/downloads/deu_news_2023_1M.tar.gz
+referenz_korpus_input/leipzig_extracted/deu_news_2023_1M/
+
+# Large external UDPipe model
+models/german-hdt-ud-2.5-191206.udpipe

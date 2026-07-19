@@ -1,0 +1,9 @@
+metric,value
+n_leipzig_input_segments,1939
+n_leipzig_documents,1909
+n_falko_documents,95
+n_combined_documents,2004
+n_empty_texts,0
+n_missing_document_ids,0
+n_duplicated_unit_ids,0
+n_duplicated_source_document_pairs,0

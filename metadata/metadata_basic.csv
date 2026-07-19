@@ -1,0 +1,4 @@
+text_id,source_type,model_family,model_id,generation_condition,parameter_status,temperature,top_p,prompt_file,output_path,target_words,generated_word_count,seed_count,generation_date
+BASIC_CHATGPT_NATIVE_001,LLM,ChatGPT,openai/gpt-4o-mini,basic_native_generation,native_default,NA,NA,prompts/prompt_master_reconstruction.txt,outputs_basic/BASIC_CHATGPT_NATIVE_001.txt,549,439,61,2026-07-07 14:21:01.204078
+BASIC_GEMINI_NATIVE_001,LLM,Gemini,google/gemini-2.5-flash,basic_native_generation,native_default,NA,NA,prompts/prompt_master_reconstruction.txt,outputs_basic/BASIC_GEMINI_NATIVE_001.txt,549,458,61,2026-07-07 14:52:04.498322
+BASIC_CLAUDE_NATIVE_001,LLM,Claude,anthropic/claude-haiku-4.5,basic_native_generation,native_default,NA,NA,prompts/prompt_master_reconstruction.txt,outputs_basic/BASIC_CLAUDE_NATIVE_001.txt,549,324,61,2026-07-07 15:05:33.537544

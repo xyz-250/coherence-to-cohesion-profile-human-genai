@@ -1,0 +1,10 @@
+metric,value
+n_source_workbooks,95
+n_documents,95
+n_conll_token_rows,69132
+n_body_token_rows,69130
+n_pre_body_fragment_rows,2
+n_sentences,3313
+n_invalid_sentence_sequences,0
+n_empty_sentences,0
+n_duplicated_sentence_uids,0
