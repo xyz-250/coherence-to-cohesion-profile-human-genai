@@ -930,6 +930,10 @@ print(
   n = Inf,
   width = Inf
 )
+saveRDS(
+  ccp_module_5c_y4,
+  file.path("../measure_outputs", "ccp_module_5c_y4.rds")
+)
 ```
 
 # Note — Contents of the \(y_4\) bundle
