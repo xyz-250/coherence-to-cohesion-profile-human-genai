@@ -8,14 +8,13 @@ execute:
   message: true
 ---
 
-# Intro: # MODUL 6 — Actual Latent Semantic Analysis
+# Intro: \# MODUL 6 — Actual Latent Semantic Analysis
 
 This document constructs the fixed L1-Corpus semantic reference space, folds the prepared target segments into that space without refitting it, and calculates the x3 and x4 semantic-similarity measures.
 
 The document reads only frozen inputs. It does not reconstruct the L1 corpus, rerun UDPipe, reread the raw target texts, relocate headings, or rebuild the validated sentence and paragraph structure.
 
-
-#
+# 
 
 ```{r}
 # MODUL 6.23 — Set up the numerical LSA workflow
@@ -138,6 +137,7 @@ message(
   "MODUL 6 actual LSA setup complete."
 )
 ```
+
 # MODUL 6.24 — Register and validate frozen paths
 
 ```{r}
@@ -206,7 +206,7 @@ message(
 )
 ```
 
-# # MODUL 6.25 — Load the frozen L1 and target bundles
+# \# MODUL 6.25 — Load the frozen L1 and target bundles
 
 ```{r}
 # MODUL 6.25 — Load the frozen L1 and target bundles
@@ -290,6 +290,7 @@ message(
   "Frozen L1 and target bundles loaded successfully."
 )
 ```
+
 # MODUL 6.26 — Extract and validate the required objects
 
 ```{r}
@@ -528,7 +529,6 @@ message(
 
 ```
 
-
 ```{r}
 # MODUL 6.27 — Prepare and freeze the selected L1 token layer
 
@@ -706,6 +706,7 @@ message(
   " documents."
 )
 ```
+
 # MODUL 6.28 — Construct and freeze L1 document term sequences
 
 ```{r}
@@ -793,7 +794,8 @@ print(
     )
 )
 ```
-# # MODUL 6.29 — Build and freeze the L1 document-feature matrix
+
+# \# MODUL 6.29 — Build and freeze the L1 document-feature matrix
 
 ```{r}
 # MODUL 6.29 — Build and freeze the L1 document-feature matrix
@@ -860,6 +862,7 @@ print(
   n = Inf
 )
 ```
+
 # MODUL 6.30 — Calculate and freeze L1 document frequencies and IDF
 
 ```{r}
@@ -961,7 +964,6 @@ n_single_document_features = sum(
   l1_document_frequency == 1L
 )
 ```
-
 
 ```{r}
 tibble::tibble(n_single_document_features = sum(l1_document_frequency == 1L), proportion_single_document_features = mean(l1_document_frequency == 1L))
@@ -1162,7 +1164,8 @@ print(
   n = Inf
 )
 ```
-# MODUL 6.33  loads the frozen LSA reference space. It does not reconstruct these target segments.
+
+# MODUL 6.33 loads the frozen LSA reference space. It does not reconstruct these target segments.
 
 ```{r}
 # MODUL 6.33 — Freeze and validate the LSA reference space
@@ -1585,7 +1588,8 @@ heading_segments |>
     n_input_terms
   )
 ```
-#
+
+# 
 
 ```{r}
 shared_prompt_headings |>
@@ -1597,6 +1601,7 @@ shared_prompt_headings |>
   ) |>
   print(n = Inf, width = Inf)
 ```
+
 # ODUL 6.35 — Fold target segments into the fixed LSA space - uses the frozen 129 segments, the frozen vocabulary, IDF, right-singular vectors, and singular values. It does not refit the LSA space.
 
 ```{r}
@@ -1848,7 +1853,8 @@ print(
 )
 
 ```
-#  MODUL 6.36 — Audit vocabulary coverage and vector validity
+
+# MODUL 6.36 — Audit vocabulary coverage and vector validity
 
 ```{r}
 
@@ -2182,7 +2188,8 @@ print(
   width = Inf
 )
 ```
-# Calculates the within-text gradient - 
+
+# Calculates the within-text gradient -
 
 ```{r}
 # Calculate within-text semantic-continuity gradients
@@ -2244,7 +2251,8 @@ print(
   width = Inf
 )
 ```
-#
+
+# 
 
 ```{r}
 # MODUL 6.37a — Calculate and freeze x3 sentence-gradient diagnostics
@@ -2282,7 +2290,7 @@ readr::write_csv(x3_gradient_diagnostics,
                  file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3_gradient_diagnostics.csv"))
 ```
 
-#
+# 
 
 ```{r}
 print(x3_profiles_extended, n = Inf, width = Inf)
@@ -2291,7 +2299,6 @@ View(x3_profiles_extended)
 readr::write_csv(x3_profiles_extended,
                  file.path(actual_lsa_output_dir, "modul_6_actual_lsa_x3_profiles_extended.csv"))
 ```
-
 
 # Plot save: modul_6_x3_sentence_gradient
 
@@ -2360,8 +2367,8 @@ ggplot2::ggsave(file.path(actual_lsa_output_dir, "modul_6_x3_human_reference.png
 print(x3_human_trajectory_summary, n = Inf)
 modul_6_x3_human_reference
 ```
-# Note: This cell fits a joint regression model of adjacent-sentence similarity over normalized text position, using the Human baseline as the reference category. It predicts the Human and LM trajectories on a common 0–1 scale and calculates each LM’s difference from Human at the beginning, middle, and end, as well as the mean absolute curve distance. The fitted trajectories, Human-relative summary, regression model, and combined comparison plot are saved for diagnostic analysis.
 
+# Note: This cell fits a joint regression model of adjacent-sentence similarity over normalized text position, using the Human baseline as the reference category. It predicts the Human and LM trajectories on a common 0–1 scale and calculates each LM’s difference from Human at the beginning, middle, and end, as well as the mean absolute curve distance. The fitted trajectories, Human-relative summary, regression model, and combined comparison plot are saved for diagnostic analysis.
 
 # MODUL 6.37e — Build and project connector-only x3 segments
 
@@ -2610,7 +2617,7 @@ print(
 )
 ```
 
-# # MODUL 6.37h — Plot Human-centered connector-transition similarity
+# \# MODUL 6.37h — Plot Human-centered connector-transition similarity
 
 ```{r}
 
@@ -2703,13 +2710,127 @@ ggplot2::ggsave(
 
 modul_6_connector_continuity
 ```
-# Note: Decoupling of Semantics and Propositional Structure  (NEEDS REVISION)
+
+# Note: Decoupling of Semantics and Propositional Structure (NEEDS REVISION)
 
 The indices’ x3co plotting (Plot x) suggested that, within a very similar topic and semantic space, the logico‑semantic structure of the discourse is organised relatively differently. As realised through the patterning of connectors, this appears as a connector‑only latent structural skeleton versus a “content mass”.
 
 If content‑word similarity shows monotonic decay (e.g., thematic shifts as sentences progress), but connector continuity does not, it means that the logical architecture of the text is decoupled from the topical progression we can observe within the human baseline. So even when the human writer and the models are writing or providing output about basically the same thing, the way they thread that content with coordinating and subordinating relations is not coupled to the semantic content in the same way as in the human texts.
 
-# MODUL 6.38 -  Build and project x3cw paragraph
+# MODUL 6.XX added from Modul 8 retrospect. — Display the exact connector inventory horizontally
+
+```{r}
+# MODUL 6.XX — Display the exact connector inventory horizontally
+
+x3cc_segments <- readRDS(file.path(
+  actual_lsa_output_dir,
+  "modul_6_actual_lsa_x3co_connector_continuity.rds"
+))$sentence_segments
+
+connector_inventory_wide <- x3cc_segments |>
+  dplyr::filter(
+    connector_type %in% c("CCONJ", "SCONJ"),
+    !is.na(terms),
+    stringr::str_trim(terms) != ""
+  ) |>
+  dplyr::mutate(
+    connector_lemma = stringr::str_split(
+      stringr::str_squish(terms),
+      "\\s+"
+    ),
+    Text = dplyr::recode(
+      as.character(model),
+      human = "Human",
+      human_baseline = "Human",
+      chatgpt_native = "ChatGPT",
+      gemini_native = "Gemini",
+      claude_native = "Claude"
+    )
+  ) |>
+  tidyr::unnest_longer(connector_lemma) |>
+  dplyr::count(
+    connector_type,
+    connector_lemma,
+    Text,
+    name = "Occurrences"
+  ) |>
+  tidyr::pivot_wider(
+    names_from = Text,
+    values_from = Occurrences,
+    values_fill = 0
+  ) |>
+  dplyr::select(
+    connector_type,
+    connector_lemma,
+    Human,
+    ChatGPT,
+    Gemini,
+    Claude
+  ) |>
+  dplyr::arrange(
+    connector_type,
+    connector_lemma
+  )
+
+connector_inventory_gt <- connector_inventory_wide |>
+  gt::gt(groupname_col = "connector_type") |>
+  gt::tab_header(
+    title = gt::md("**Exact connector inventory by target text**"),
+    subtitle = "CCONJ and SCONJ lemma occurrences"
+  ) |>
+  gt::cols_label(
+    connector_lemma = "Connector lemma"
+  ) |>
+  gt::fmt_integer(
+    columns = c(Human, ChatGPT, Gemini, Claude),
+    use_seps = FALSE
+  ) |>
+  gt::cols_align(
+    align = "center",
+    columns = gt::everything()
+  ) |>
+  gt::tab_source_note(
+    source_note =
+      "Measure: exact lemma occurrence count for tokens annotated as CCONJ or SCONJ."
+  ) |>
+  gt::tab_style(
+    style = gt::cell_text(
+      weight = "bold",
+      color = "black"
+    ),
+    locations = list(
+      gt::cells_column_labels(),
+      gt::cells_row_groups()
+    )
+  ) |>
+  gt::tab_style(
+    style = gt::cell_borders(
+      sides = "all",
+      color = "black",
+      weight = gt::px(1)
+    ),
+    locations = list(
+      gt::cells_column_labels(),
+      gt::cells_row_groups(),
+      gt::cells_body()
+    )
+  ) |>
+  gt::tab_options(
+    table.background.color = "white",
+    heading.background.color = "white",
+    column_labels.background.color = "white",
+    row_group.background.color = "white",
+    source_notes.background.color = "white",
+    table.font.color = "black",
+    table.font.size = gt::px(9),
+    source_notes.font.size = gt::px(7),
+    data_row.padding = gt::px(3)
+  )
+
+connector_inventory_gt
+```
+
+# MODUL 6.38 - Build and project x3cw paragraph
 
 ```{r}
 
@@ -3002,7 +3123,8 @@ x3cw_paragraph_segments |>
   )
 
 ```
-# # MODUL 6.37j — Calculate and freeze x3cw continuity
+
+# \# MODUL 6.37j — Calculate and freeze x3cw continuity
 
 ```{r}
 
@@ -3172,8 +3294,7 @@ print(
 )
 ```
 
-
-# # MODUL 6.38 — Canonicalize and freeze x3s, x3p, and x3pcw
+# \# MODUL 6.38 — Canonicalize and freeze x3s, x3p, and x3pcw
 
 ```{r}
 
@@ -3466,7 +3587,6 @@ tibble::tibble(
   )
 ```
 
-
 # 8. Reload and verify the canonical frozen objects
 
 ```{r}
@@ -3500,7 +3620,6 @@ message(
   "Canonical x3s, x3p, and x3pcw names verified in frozen outputs."
 )
 ```
-
 
 # MODUL 6.38a — Calculate and freeze x3pcw topic-continuity (alias semantic similarity continuity) gradients
 
@@ -3764,69 +3883,36 @@ x3pcw_profiles_extended |>
     width = Inf
   )
 ```
+
 # Note: The Semantic Coherence Matrix
-In the yet to follow matrix, Topic Continuity (operationalized as adjacent semantic similarity) is a graded measure of semantic continuity that can be higher or lower. The Topic-continuity gradient represents the change in adjacent semantic similarity over normalized text position (here on paragraph level, a paragraph was vectorized for the LSA to be applied). The x3 (x3s [sentnce-level], x3p [paragraph-level], x3pcw [content words over paragraphs]) indices were calculated over 
-x3s sentence pairs:       102
-x3s profiles:               4
-+
-x3p paragraph pairs:       11
-x3p profiles:               4
-+
-x3pcw paragraph pairs:     11
-x3pcw profiles:             4
 
+In the yet to follow matrix, Topic Continuity (operationalized as adjacent semantic similarity) is a graded measure of semantic continuity that can be higher or lower. The Topic-continuity gradient represents the change in adjacent semantic similarity over normalized text position (here on paragraph level, a paragraph was vectorized for the LSA to be applied). The x3 (x3s \[sentnce-level\], x3p \[paragraph-level\], x3pcw \[content words over paragraphs\]) indices were calculated over x3s sentence pairs: 102 x3s profiles: 4 + x3p paragraph pairs: 11 x3p profiles: 4 + x3pcw paragraph pairs: 11 x3pcw profiles: 4
 
-Current x3pcw results
-Mean Topic-Continuity level
-Human      0.3056374
-Claude     0.2454105
-Gemini     0.1643951
-ChatGPT    0.1482608
+Current x3pcw results Mean Topic-Continuity level Human 0.3056374 Claude 0.2454105 Gemini 0.1643951 ChatGPT 0.1482608
 
 Ranking:
 
-Human > Claude > Gemini > ChatGPT
-Topic-continuity gradients
-ChatGPT   +0.11153652
-Claude    −0.13371286
-Gemini    −0.27977701
-Human     +0.05262017
+Human \> Claude \> Gemini \> ChatGPT Topic-continuity gradients ChatGPT +0.11153652 Claude −0.13371286 Gemini −0.27977701 Human +0.05262017
 
 Interpretation:
 
-Human
-→ highest overall Topic Continuity;
-  small positive trajectory
+Human → highest overall Topic Continuity; small positive trajectory
 
-Claude
-→ relatively high Topic Continuity;
-  declining trajectory
+Claude → relatively high Topic Continuity; declining trajectory
 
-ChatGPT
-→ lowest overall Topic Continuity;
-  improving trajectory from a very low starting point
+ChatGPT → lowest overall Topic Continuity; improving trajectory from a very low starting point
 
-Gemini
-→ low Topic Continuity;
-  strongest decline
+Gemini → low Topic Continuity; strongest decline
 
 For texts with only two paragraph transitions, gradient standard error and R 2 remain NA.
 
-Observed R
-2
- values:
+Observed R 2 values:
 
-ChatGPT   0.1062
-Human     0.0367
-Claude    NA
-Gemini    NA
+ChatGPT 0.1062 Human 0.0367 Claude NA Gemini NA
 
 The low values for ChatGPT and Human show that their trajectories are not strongly linear.
 
-Semantic Coherence Matrix
-Topic-continuity level	Positive or near-stable gradient	Negative gradient
-High	Human: high and comparatively stable continuity	Claude: high level, fading continuity
-Low	ChatGPT: low but improving continuity	Gemini: low level, rapid continuity loss
+Semantic Coherence Matrix Topic-continuity level Positive or near-stable gradient Negative gradient High Human: high and comparatively stable continuity Claude: high level, fading continuity Low ChatGPT: low but improving continuity Gemini: low level, rapid continuity loss
 
 Out of need for normalization, we hypothesize a idealized Point d’Or which configaration would be
 
@@ -3838,24 +3924,29 @@ Topic Continuity (Level): This is given by the mean of adjacent semantic similar
 
 Trajectory (Gradient): This is given by the change in adjacent semantic similarity over normalized text (continuiation). It answers the question: Does the topic continuity increase, decrease, or remain stable as the text progresses?
 
-Hovewer it appears obvious to ask whether and how is paragraph-level LSA Topic Continuity associated with exact content-lemma overlap? Because current text-level rankings appear different: y4 content-lemma overlap → 1.ChatGPT > 2. Human > 3.Gemini > 4. Claude and x3pcw Topic Continuity → 1. Human > 2. Claude > 3. Gemini > 4. ChatGPT,  the analysis asks whether higher exact content-lemma overlap predicts higher LSA-based Topic Continuity, which motivates the the later pair-level correlation analysis. Therefore to grasp that central research question at this point the relevant measures become  y4 (content_jaccard) and x3pcw and its exploring their relation:
+Hovewer it appears obvious to ask whether and how is paragraph-level LSA Topic Continuity associated with exact content-lemma overlap? Because current text-level rankings appear different: y4 content-lemma overlap → 1.ChatGPT \> 2. Human \> 3.Gemini \> 4. Claude and x3pcw Topic Continuity → 1. Human \> 2. Claude \> 3. Gemini \> 4. ChatGPT, the analysis asks whether higher exact content-lemma overlap predicts higher LSA-based Topic Continuity, which motivates the the later pair-level correlation analysis. Therefore to grasp that central research question at this point the relevant measures become y4 (content_jaccard) and x3pcw and its exploring their relation:
 
 y4_content_jaccard ↔ x3pcw_adjacent_paragraph_similarity
 
 Both measures use the same 11 adjacent paragraph transitions, i.e. they use NOUN, VERB, ADJ, ADV and operate on paragraph level.
 
-y4_content_jaccard shows the exact recurrence of content lemmas, while x3pcw is intended to latent semantic Topic Continuity. 
+y4_content_jaccard shows the exact recurrence of content lemmas, while x3pcw is intended to latent semantic Topic Continuity.
 
 # --------- end of Note -------------------------------------------
 
-# # MODUL 6.38b — Join and freeze matched y4 and x3pcw paragraph transitions
-This cell reads the two frozen pair-level sources, verifies identical paragraph boundaries, creates normalized within-text position, and freezes the 11-transition table. The y4 source already contains paragraph_number, next_paragraph_number, and y4_content_jaccard.
-* We are doing this to test whether exact content-word repetition (y4) actually co-varies with latent paragraph-level Topic Continuity (x3pcw) across the same 11 paragraph transitions. The joined table is needed because the correlation, regression, and scatterplot require both measures aligned row by row for each identical transition.
+# \# MODUL 6.38b — Join and freeze matched y4 and x3pcw paragraph transitions
 
+This cell reads the two frozen pair-level sources, verifies identical paragraph boundaries, creates normalized within-text position, and freezes the 11-transition table. The y4 source already contains paragraph_number, next_paragraph_number, and y4_content_jaccard. \* We are doing this to test whether exact content-word repetition (y4) actually co-varies with latent paragraph-level Topic Continuity (x3pcw) across the same 11 paragraph transitions. The joined table is needed because the correlation, regression, and scatterplot require both measures aligned row by row for each identical transition.
 
-#
+# 
 
 ```{r}
+actual_lsa_output_dir <- normalizePath(
+  "../measure_outputs",
+  winslash = "/",
+  mustWork = TRUE
+)
+
 file.exists(
   file.path(
     actual_lsa_output_dir,
@@ -3864,8 +3955,7 @@ file.exists(
 )
 ```
 
-
-# Modul 6.38b -
+# Modul 6.38b - Join and freeze matched y4 and x3pcw paragraph transitions
 
 ```{r}
 # MODUL 6.38b — Join and freeze matched y4 and x3pcw paragraph transitions
@@ -3967,8 +4057,7 @@ stopifnot(
 y4_x3pcw_matched_transitions
 ```
 
-
-#
+# 
 
 ```{r}
 stopifnot(
@@ -3996,10 +4085,10 @@ message(
   " texts."
 )
 ```
+
 # Note: stopifnot() produces no output when all conditions are satisfied.
 
-
-# # MODUL 6.38c — Calculate and freeze y4–x3pcw relationship diagnostics
+# \# MODUL 6.38c — Calculate and freeze y4–x3pcw relationship diagnostics
 
 ```{r}
 # MODUL 6.38c — Calculate and freeze y4–x3pcw relationship diagnostics
@@ -4111,35 +4200,28 @@ stopifnot(
 
 y4_x3pcw_relationship_diagnostics
 ```
+
 # Interpretative note:
 
-The primary all-text analysis suggests 
+The primary all-text analysis suggests
 
-greater exact content-lemma recurrence
-tends to coincide with greater latent Topic Continuity, but only within the human baseline. The LM-only result is essentially zero:
+greater exact content-lemma recurrence tends to coincide with greater latent Topic Continuity, but only within the human baseline. The LM-only result is essentially zero:
 
-Pearson r = −0.0224
-Spearman ρ = −0.0714
-R² = 0.0005
+Pearson r = −0.0224 Spearman ρ = −0.0714 R² = 0.0005
 
 This means that exact content-word repetition does not meaningfully predict x3pcw Topic Continuity across the seven LM transitions!
 
 The positive pooled relationship appears to be exclusivelly influenced by the four Human transitions, which show a strong positive pattern. Because the Human analysis has only four observations, it must remain exploratory.
 
-Conclusive note: Across all eleven transitions, exact content-lemma recurrence showed a moderate positive descriptive association with latent Topic Continuity. This relationship disappeared when the analysis was restricted to the seven LM transitions, suggesting that the pooled association was substantially influenced by the Human paragraph transitions. Exact lexical recurrence and latent semantic continuity therefore cannot be treated as interchangeable properties in the present data.
-The way the LMs use lexical material repetitively to maintain Topic Continuity does not lead to a corresponding Topic-Continuity resolution as measured with LSA. This is therefore one of the clearest decoupling indices the CCP has shown so far: exact lexical recurrence and latent semantic continuity are structurally distinct and do not necessarily co-vary.
+Conclusive note: Across all eleven transitions, exact content-lemma recurrence showed a moderate positive descriptive association with latent Topic Continuity. This relationship disappeared when the analysis was restricted to the seven LM transitions, suggesting that the pooled association was substantially influenced by the Human paragraph transitions. Exact lexical recurrence and latent semantic continuity therefore cannot be treated as interchangeable properties in the present data. The way the LMs use lexical material repetitively to maintain Topic Continuity does not lead to a corresponding Topic-Continuity resolution as measured with LSA. This is therefore one of the clearest decoupling indices the CCP has shown so far: exact lexical recurrence and latent semantic continuity are structurally distinct and do not necessarily co-vary.
 
 More specifically, the LM-only analysis shows that the repetitive use of content lemmas does not contribute at all to explaining variation in x3pcw Topic Continuity:
 
+r=-0.0224,\qquad \rho=-0.0714,\qquad R\^2=0.0005.
 
-r=-0.0224,\qquad
-\rho=-0.0714,\qquad
-R^2=0.0005.
+Interpretation Note: The LMs can therefore use lexical material repetitively to maintain the appearance of topic continuity without this repetition structurally leading to a corresponding latent Topic-Continuity resolution in the LSA space, something we know from Bajohr’s observations about “surface cohesion.” However, the CCP provides a more fine-grained hypothesis: in a deeper sense, as explained throughout the Theoretical Part, LMs are not even cohesive in a human-centered manner. Their cohesion is not motivated by meaning generation (which would converge on coherence), but by a task-driven notion of topicality. The result does not establish causality, but it provides strong descriptive evidence that lexical repetition cannot be treated as equivalent to semantic Topic Continuity.
 
-Interpretation Note:  The LMs can therefore use lexical material repetitively to maintain the appearance of topic continuity without this repetition structurally leading to a corresponding latent Topic-Continuity resolution in the LSA space, something we know from Bajohr’s observations about “surface cohesion.” However, the CCP provides a more fine-grained hypothesis: in a deeper sense, as explained throughout the Theoretical Part, LMs are not even cohesive in a human-centered manner. Their cohesion is not motivated by meaning generation (which would converge on coherence), but by a task-driven notion of topicality. The result does not establish causality, but it provides strong descriptive evidence that lexical repetition cannot be treated as equivalent to semantic Topic Continuity.
-
-
-#
+# 
 
 ```{r}
 
@@ -4239,13 +4321,10 @@ message(
 )
 ```
 
-# # MODUL 6.38d — Plot lexical overlap versus Topic Continuity
+# MODUL 6.38d — Plot lexical overlap versus Topic Continuity
 
-```{r}
 
-```
-
-#
+# 
 
 ```{r}
 # MODUL 6.38e — Plot observed y4 content-word continuity waves
@@ -4345,7 +4424,6 @@ modul_6_y4_content_continuity_waves
 
 # Caveat Note: Because the four texts contain different numbers of paragraphs, their adjacent-paragraph transitions are not directly equivalent on a one-to-one basis. Normalized transition position allows only a descriptive comparison of relative within-text development; it does not equalize the number or structural function of the paragraph boundaries. The x3pcw text means are therefore treated as the principal comparative measures, while the gradients and observed waves remain secondary descriptive diagnostics. For Claude and Gemini, which contain only two transitions, the gradients represent simple two-point differences rather than sustained developmental trajectories. + What remains strongly comparable is the shared measure "x3pcw_adjacent_paragraph_similarity_mean". It summarizes the overall meso-to-macro, near-global level of Topic Continuity despite different numbers of transitions. The gradient is secondary: for Human and ChatGPT it offers only limited directional diagnostics, and for Claude and Gemini it reduces to two-point differences only.
 
-
 # 
 
 ```{r}
@@ -4366,9 +4444,7 @@ names(gradient_object)
 
 ```
 
-
-#
-
+# 
 
 ```{r}
 # MODUL 6.38f — Plot x3pcw Topic-Continuity trajectories
@@ -4482,8 +4558,7 @@ ggplot2::ggsave(
 modul_6_x3pcw_topic_continuity_trajectories
 ```
 
-
-#
+# 
 
 ```{r}
 # MODUL 6.38e — Overlapped Continuity Waves (Lexical y4 & Semantic x3pcw)
@@ -4566,30 +4641,16 @@ modul_6_combined_continuity_waves <- ggplot2::ggplot(combined_wave_data, ggplot2
 # 4. Save and display the final combined plot
 ggplot2::ggsave(filename = combined_wave_plot_path, plot = modul_6_combined_continuity_waves, width = 9, height = 7, dpi = 300)
 modul_6_combined_continuity_waves
-
-
-
-
-
-
-
- 
- 
-  
-   
-
 ```
 
-
-#
+# 
 
 ```{r}
 stopifnot(file.exists(combined_wave_plot_path))
 message("Plot saved to: ", combined_wave_plot_path)
 ```
 
-
-# # # MODUL 6.39 — Calculate title-based x4 similarities
+# \# \# MODUL 6.39 — Calculate title-based x4 similarities
 
 ```{r}
 # MODUL 6.39 — Calculate title-based x4 similarities
@@ -4650,14 +4711,12 @@ prompt_subheading_title_baseline <- prompt_subheading_title_pairs |>
 x4_title_profiles
 prompt_subheading_title_baseline
 ```
-# Note: Sentence → title mean
-Each body sentence was compared with the shared main-title vector using cosine similarity. The sentence similarities were then averaged separately for each text.
-Paragraph → title mean
-Each original body paragraph was compared with the same main-title vector. The paragraph similarities were then averaged separately for each text.
-Whole text → title
-The complete body text was represented by one LSA vector and compared once with the main-title vector. Therefore, this is a single cosine similarity, not a mean of sentence or paragraph values.
 
-#
+# Note: Sentence → title mean
+
+Each body sentence was compared with the shared main-title vector using cosine similarity. The sentence similarities were then averaged separately for each text. Paragraph → title mean Each original body paragraph was compared with the same main-title vector. The paragraph similarities were then averaged separately for each text. Whole text → title The complete body text was represented by one LSA vector and compared once with the main-title vector. Therefore, this is a single cosine similarity, not a mean of sentence or paragraph values.
+
+# 
 
 ```{r}
 # MODUL 6.39a — Calculate merged-section-to-subheading similarities
@@ -4749,21 +4808,19 @@ x4_subheading_profiles <- x4_section_subheading_pairs |>
 x4_section_subheading_pairs
 x4_subheading_profiles
 ```
-# Note: Main new measure - x4_paragraph_subheading_similarity_mean -> For each text:
 
-merged Section 1 was compared with Subheading 1;
-merged Section 2 was compared with Subheading 2;
-merged Section 3 was compared with Subheading 3; the three cosine similarities were averaged equally. 
+# Note: Main new measure - x4_paragraph_subheading_similarity_mean -\> For each text:
 
-Section 1 → Subheading 1 = s1
-Section 2 → Subheading 2 = s2
-Section 3 → Subheading 3 = s3
+merged Section 1 was compared with Subheading 1; merged Section 2 was compared with Subheading 2; merged Section 3 was compared with Subheading 3; the three cosine similarities were averaged equally.
 
-Each comparison contributes exactly one third to the final value:=> s1+s2+s3/3
+Section 1 → Subheading 1 = s1 Section 2 → Subheading 2 = s2 Section 3 → Subheading 3 = s3
 
-Caveat note:The paragraph-to-subheading similarity should be interpreted cautiously because the subheadings may have been added after the body text had already been written. 
+Each comparison contributes exactly one third to the final value:=\> s1+s2+s3/3
 
-(In that case, the measure captures the retrospective semantic fit between each section and its assigned subheading, rather than necessarily showing whether the text was originally developed in response to/toward that subheading.)
+Caveat note:The paragraph-to-subheading similarity should be interpreted cautiously because the subheadings may have been added after the body text had already been written.
+
+(In that case, the measure captures the retrospective semantic fit between each section and its assigned subheading, rather than necessarily showing whether the text was originally developed in response to/toward that subheading.) 
+
 #
 
 ```{r}
@@ -4779,7 +4836,6 @@ stopifnot(
 
 print(x4_section_segments, n = Inf, width = Inf)
 ```
-
 
 # MODUL 6.39b — Assemble, freeze, and validate title and subheading x4
 
@@ -4841,6 +4897,7 @@ message("MODUL 6.39 title and subheading x4 outputs frozen and reloaded.")
 print(x4_title_subheading_profiles, n = Inf, width = Inf)
 print(prompt_subheading_title_baseline, width = Inf)
 ```
+
 # Note: These numbers say, how well each model and the human baseline “sticks to its own headings” at different structural levels. Interpreting the columns as LSA‑based semantic similarity between each unit and its title (higher = more on‑topic):
 
 Whole text → title: All four have the highest values here (0.26–0.46), so at the macro level every text broadly fits its overall title. The human text is strongest (0.4571), followed by Claude, then ChatGPT, with Gemini lowest.
@@ -4849,8 +4906,7 @@ Paragraph → title/ subtitle: Again, the human text is at or near the top (0.31
 
 Sentence → title: At the micro level, ChatGPT (0.1551) and the human text (0.1375) are quite close, with Claude slightly lower and Gemini lowest. That is, individual human and ChatGPT sentences are more semantically related to the text title than Claude’s or Gemini’s are.
 
-Put simply: across all structural levels, the human text shows the strongest and most consistent semantic anchoring to its titles, Claude is generally next, ChatGPT slightly behind but still reasonably aligned, and Gemini is weakest, especially at the paragraph, whole‑text, and sentence levels. This supports the view that humans keep their discourse more tightly organised around the announced topics, while Gemini didn't manage to stick to the prompted headings.
-# ===========================================================
+Put simply: across all structural levels, the human text shows the strongest and most consistent semantic anchoring to its titles, Claude is generally next, ChatGPT slightly behind but still reasonably aligned, and Gemini is weakest, especially at the paragraph, whole‑text, and sentence levels. This supports the view that humans keep their discourse more tightly organised around the announced topics, while Gemini didn't manage to stick to the prompted headings. \# ===========================================================
 
 # MODUL 6.40a — Load and validate frozen seed-word inputs
 
@@ -4903,7 +4959,6 @@ tibble::tibble(
   )
 )
 ```
-
 
 # MODUL 6.40b — Prepare expected seed-word and annotation layers
 
@@ -4962,7 +5017,6 @@ tibble::tibble(
 )
     
 ```
-
 
 # MODUL 6.40c — Calculate expected seed-word diagnostics
 
@@ -5030,15 +5084,14 @@ expected_seed_word_diagnostics |>
   )
 ```
 
-#
+# 
 
 ```{r}
 
 ```
 
-
-
 # MODUL 6.40e — Freeze and reload x4 seed-word diagnostics
+
 This freezes the complete reusable MODUL 6.40 bundle. The diagnostics table later enters the x4-associated profile, while human_seed_words_in_model supplies the Human-derived seed associative net component for MODUL 6.41.
 
 ```{r}
@@ -5083,20 +5136,12 @@ expected_seed_word_diagnostics |>
 
 message("Expected seed-word diagnostics frozen and reloaded successfully.")
 ```
-# Meaning of the MODUL 6.40 diagnostics
-n_sw_expected: all 61 seed-word occurrences prescribed by the prompt.
-n_sw_detected: prescribed seed-word occurrences actually found in the text.
-n_sw_annotated: detected occurrences with both lemma and POS annotation.
-n_sw_in_model: detected and annotated occurrences with an eligible POS whose lemma exists in the actual-LSA vocabulary. These exact rows can form the seed vector.
-n_sw_oov: detected and LSA-relevant occurrences whose lemmas are outside the actual-LSA vocabulary.
-# Note: 
-n_sw_detected is used within MODUL 6.40 as an exploratory x4-associated diagnostic of expected seed-word presence. The retained values are 48/61 for ChatGPT and 50/61 for Claude. Gemini is excluded because retained Markdown emphasis markers systematically corrupted parts of its token and POS annotation. The Human baseline is excluded from the comparative diagnostic because it is the source of the expected seed-word list and supplies the Human-derived seed component for MODUL 6.41. n_sw_detected remains separate from x4_text_prompt_induced_ass_net_similarity and must not be averaged with or added to the cosine score calculated in MODUL 6.42. During final integration, values are available only for ChatGPT and Claude; Gemini and Human should remain missing for this diagnostic, with their respective exclusion reasons documented.
-# Because n_sw_detected equals n_sw_annotated for both models, there is no annotation failure among the detected words. Instead:
 
-ChatGPT omitted 13 required seed-word occurrences.
-Claude omitted 11 required seed-word occurrences.
-Of the detected words, only 25 and 27 respectively can enter the actual-LSA vector because the remaining detected words have excluded POS categories or are OOV.
-# ===================================
+# Meaning of the MODUL 6.40 diagnostics
+
+n_sw_expected: all 61 seed-word occurrences prescribed by the prompt. n_sw_detected: prescribed seed-word occurrences actually found in the text. n_sw_annotated: detected occurrences with both lemma and POS annotation. n_sw_in_model: detected and annotated occurrences with an eligible POS whose lemma exists in the actual-LSA vocabulary. These exact rows can form the seed vector. n_sw_oov: detected and LSA-relevant occurrences whose lemmas are outside the actual-LSA vocabulary. \# Note: n_sw_detected is used within MODUL 6.40 as an exploratory x4-associated diagnostic of expected seed-word presence. The retained values are 48/61 for ChatGPT and 50/61 for Claude. Gemini is excluded because retained Markdown emphasis markers systematically corrupted parts of its token and POS annotation. The Human baseline is excluded from the comparative diagnostic because it is the source of the expected seed-word list and supplies the Human-derived seed component for MODUL 6.41. n_sw_detected remains separate from x4_text_prompt_induced_ass_net_similarity and must not be averaged with or added to the cosine score calculated in MODUL 6.42. During final integration, values are available only for ChatGPT and Claude; Gemini and Human should remain missing for this diagnostic, with their respective exclusion reasons documented. \# Because n_sw_detected equals n_sw_annotated for both models, there is no annotation failure among the detected words. Instead:
+
+ChatGPT omitted 13 required seed-word occurrences. Claude omitted 11 required seed-word occurrences. Of the detected words, only 25 and 27 respectively can enter the actual-LSA vector because the remaining detected words have excluded POS categories or are OOV. 
 
 # MODUL 6.41a — Construct and freeze the Human-derived prompt-induced associative net
 
@@ -5267,7 +5312,7 @@ print(c(
 ))
 ```
 
-# Inspection =  object names overview
+# Inspection = object names overview
 
 ```{r}
 names(expected_seed_word_bundle)
@@ -5448,9 +5493,10 @@ stopifnot(
 
 print(prompt_induced_ass_net_bundle$seed_word_net_similarities, n = Inf)
 message("Seed-word-net similarities frozen and reloaded successfully.")
-
 ```
-# Note: 
+
+# Note:
+
 The seed-word list was fixed at 61 expected seed words for every text. However, not every LM implemented all 61 seed words, resulting in detected seed-word subsets of 48 for ChatGPT and 50 for Claude. In addition, only seed words belonging to the selected LSA categories—NOUN, PROPN, VERB, ADJ, ADV, CCONJ, and SCONJ—could enter the LSA projection, while many function words were excluded by design. The remaining seed words also had to be represented in the frozen actual-LSA vocabulary. Consequently, the final Seed-word nets are based on 35 seed words in model for Human, 25 for ChatGPT, and 27 for Claude. This reduction is therefore mainly due to incomplete LM implementation, POS-based LSA selection, and OOV cases, rather than an additional annotation loss.
 
 # MODUL 6.41g — Calculate and freeze whole-text similarities
@@ -5507,6 +5553,7 @@ print(whole_text_similarities, n = Inf)
 print(human_similarity_differences, n = Inf)
 message("Whole-text similarities and LM–Human differences frozen and reloaded successfully.")
 ```
+
 # Inspect existing MODUL 6 objects and saved bundle fields
 
 ```{r}
@@ -5538,7 +5585,7 @@ for (path in modul_6_rds_files) {
 }
 ```
 
-#
+# MODUL 6.42 — Assemble and freeze final x5 and x6 indices families
 
 ```{r}
 # MODUL 6.42 — Assemble and freeze final x5 and x6 indices families
@@ -5638,8 +5685,7 @@ stopifnot(
 message("x5_prompt_compliance and x6_txts_lsa_sim frozen and reloaded successfully.")
 ```
 
-
-#
+# 
 
 ```{r}
 # MODUL 6.43 — Final audit of frozen actual-LSA outputs
@@ -5713,9 +5759,3 @@ readr::write_csv(final_lsa_audit, file.path(actual_lsa_output_dir, "modul_6_actu
 print(final_lsa_audit, n = Inf)
 message("MODUL 6 final frozen-output audit passed.")
 ```
-
-
-
-
-
-

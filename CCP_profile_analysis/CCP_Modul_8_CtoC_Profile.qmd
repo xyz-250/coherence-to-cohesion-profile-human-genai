@@ -220,6 +220,37 @@ print(length_diagnostics_print, n = Inf)
 cat("Prompt-length diagnostics frozen and reloaded.\n")
 ```
 
+# 
+
+```{r}
+# MODUL 8.25 — Calculate and freeze Human-referenced word-count driftₕ
+# MODUL 8.25 — Calculate and freeze prompt-compliance text-length driftₕ
+
+modul_8_prompt_length_drift <- length_diagnostics |>
+  dplyr::filter(text_label != "Human") |>
+  dplyr::transmute(
+    text_id,
+    `Target text` = as.character(text_label),
+    Measure = "Prompt-compliance text length in word tokens",
+    `Human reference` = 549L,
+    `driftₕ` = `Human reference` - n_word_tokens
+  )
+
+modul_8_prompt_length_drift_path <- file.path(
+  modul_8_output_dir,
+  "modul_8_prompt_compliance_text_length_drift.rds"
+)
+
+saveRDS(
+  modul_8_prompt_length_drift,
+  modul_8_prompt_length_drift_path
+)
+
+readRDS(modul_8_prompt_length_drift_path) |>
+  gt::gt(groupname_col = "Target text") |>
+  gt::fmt_integer(columns = c(`Human reference`, `driftₕ`))
+```
+
 # MODUL 8.4 — Create the lexical-cohesion indices-bundle table
 
 ```{r}
@@ -440,10 +471,188 @@ modul_8_lexical_cohesion_gt <- modul_8_lexical_cohesion |>
 modul_8_lexical_cohesion_gt
 ```
 
-# exploration for future
+# 
+```{r}
+modul_8_lexical_cohesion |>
+  dplyr::select(
+    text_label,
+    n_paragraphs,
+    n_adjacent_paragraph_pairs,
+    y4_all_lemma_overlap_mean,
+    y4_content_overlap_mean,
+    noun_transition_sum,
+    pronoun_transition_sum,
+    adverb_transition_sum,
+    potential_nominal_reference_transition_sum,
+    noun_to_potential_pronoun_ratio
+  ) |>
+  print(n = Inf, width = Inf)
+
+```
+
+# # MODUL 8.6 — Freeze text-length and lexical-cohesion driftₕ profile cards /exploration for future
 
 ```{r}
-# MODUL 8.6 — Plot the y4 lemma-transfer heat map
+# MODUL 8.6 — Plot the y4 lemma-transfer heat map old
+# MODUL 8.6 — Freeze early Human-referenced driftₕ rows
+ # MODUL 8.6 — Freeze text-length and lexical-cohesion drift profile cards
+
+m8_lex <- modul_8_lexical_cohesion |>
+  dplyr::transmute(
+    text_id,
+    text_label = as.character(text_label),
+    `Number of paragraphs` = as.numeric(n_paragraphs),
+    `Mean adjacent-paragraph all-lemma overlap` = y4_all_lemma_overlap_mean,
+    `Mean adjacent-paragraph content-word overlap` = y4_content_overlap_mean,
+    `Noun transfers across adjacent paragraph pairs` =
+      noun_transition_sum / n_adjacent_paragraph_pairs,
+    `Pronoun transfers across adjacent paragraph pairs` =
+      pronoun_transition_sum / n_adjacent_paragraph_pairs,
+    `Adverb transfers across adjacent paragraph pairs` =
+      adverb_transition_sum / n_adjacent_paragraph_pairs,
+    `Noun-to-potential-pronoun ratio across adjacent paragraph pairs` =
+      dplyr::if_else(
+        pronoun_transition_sum > 0,
+        noun_transition_sum / pronoun_transition_sum,
+        NA_real_
+      )
+  ) |>
+  tidyr::pivot_longer(
+    -c(text_id, text_label),
+    names_to = "indices",
+    values_to = "value"
+  )
+
+m8_registry <- tibble::tribble(
+  ~indices, ~measure_type, ~measurement_level, ~indices_order,
+  "Number of paragraphs", "count", "macro", 2L,
+  "Mean adjacent-paragraph all-lemma overlap", "Jaccard similarity", "meso", 3L,
+  "Mean adjacent-paragraph content-word overlap", "Jaccard similarity", "meso", 4L,
+  "Noun transfers across adjacent paragraph pairs", "count per adjacent paragraph pair", "meso", 5L,
+  "Pronoun transfers across adjacent paragraph pairs", "count per adjacent paragraph pair", "meso", 6L,
+  "Adverb transfers across adjacent paragraph pairs", "count per adjacent paragraph pair", "meso", 7L,
+  "Noun-to-potential-pronoun ratio across adjacent paragraph pairs", "ratio", "meso", 8L
+)
+
+m8_lex <- m8_lex |>
+  dplyr::left_join(m8_registry, by = "indices") |>
+  dplyr::mutate(
+    indices_bundle = "lexical_cohesion",
+    interpretative_frame = "cc_interface"
+  )
+
+human_lex <- m8_lex |>
+  dplyr::filter(text_label == "Human") |>
+  dplyr::select(indices, human_reference = value)
+
+m8_length <- length_diagnostics |>
+  dplyr::filter(text_label != "Human") |>
+  dplyr::transmute(
+    text_id,
+    text_label = as.character(text_label),
+    indices_bundle = "prompt_complience_1",
+    indices = "Generated text length in word tokens",
+    measure_type = "count",
+    measurement_level = "macro",
+    interpretative_frame = "cc_interface",
+    indices_order = 1L,
+    human_reference = 549,
+    drift_h = human_reference - n_word_tokens
+  )
+
+modul_8_length_lexical_drift_cards <- dplyr::bind_rows(
+  m8_length,
+  m8_lex |>
+    dplyr::filter(text_label != "Human") |>
+    dplyr::left_join(human_lex, by = "indices") |>
+    dplyr::mutate(drift_h = human_reference - value) |>
+    dplyr::select(-value)
+) |>
+  dplyr::mutate(
+    text_order = match(text_label, c("ChatGPT", "Gemini", "Claude"))
+  ) |>
+  dplyr::arrange(text_order, indices_order) |>
+  dplyr::group_by(text_label) |>
+  dplyr::mutate(`No.` = dplyr::row_number()) |>
+  dplyr::ungroup() |>
+  dplyr::select(-text_order, -indices_order)
+
+stopifnot(
+  nrow(modul_8_length_lexical_drift_cards) == 24L,
+  !anyNA(modul_8_length_lexical_drift_cards$human_reference),
+  !anyNA(modul_8_length_lexical_drift_cards$drift_h)
+)
+
+saveRDS(
+  modul_8_length_lexical_drift_cards,
+  file.path(
+    modul_8_output_dir,
+    "modul_8_length_lexical_cohesion_drift_cards.rds"
+  )
+)
+
+modul_8_length_lexical_drift_gt <- modul_8_length_lexical_drift_cards |>
+  dplyr::select(
+    `Target text` = text_label,
+    `No.`,
+    `Indices bundle` = indices_bundle,
+    Indices = indices,
+    `Measure type` = measure_type,
+    `Measurement level` = measurement_level,
+    `Interpretative frame` = interpretative_frame,
+    `driftₕ` = drift_h,
+    `Human baseline` = human_reference
+  ) |>
+  gt::gt(groupname_col = "Target text") |>
+  gt::tab_header(
+    title = gt::md("**Text-length and lexical-cohesion drift profile cards**"),
+    subtitle = gt::md("$drift_h = Human - LM$")
+  ) |>
+  gt::fmt_integer(
+    columns = c(`driftₕ`, `Human baseline`),
+    rows = `Measure type` == "count"
+  ) |>
+  gt::fmt(
+    columns = c(`driftₕ`, `Human baseline`),
+    rows = `Measure type` != "count",
+    fns = \(x) {
+      x <- round(x, 2)
+      ifelse(
+        abs(x - round(x)) < 1e-9,
+        sprintf("%.0f", x),
+        sprintf("%.2f", x)
+      )
+    }
+  ) |>
+  gt::cols_align("center", gt::everything()) |>
+  gt::tab_style(
+    gt::cell_text(weight = "bold"),
+    list(gt::cells_column_labels(), gt::cells_row_groups())
+  ) |>
+  gt::tab_style(
+    gt::cell_borders(sides = "all", color = "black"),
+    list(
+      gt::cells_column_labels(),
+      gt::cells_row_groups(),
+      gt::cells_body()
+    )
+  ) |>
+  gt::tab_options(
+    table.width = gt::pct(92),
+    table.font.size = gt::px(9),
+    heading.title.font.size = gt::px(12),
+    heading.subtitle.font.size = gt::px(9),
+    data_row.padding = gt::px(2),
+    column_labels.padding = gt::px(3),
+    row_group.padding = gt::px(3),
+    table.background.color = "white",
+    heading.background.color = "white",
+    column_labels.background.color = "white",
+    row_group.background.color = "white",
+    table.font.color = "black"
+  )
+
+modul_8_length_lexical_drift_gt
 ```
 
 # MODUL 6 Indices BUNDELS
@@ -678,13 +887,10 @@ modul_8_x3_core_gt <- modul_8_x3_core |>
 
 modul_8_x3_core_gt
 ```
+
 # gt::tab_source_note(
-  source_note = paste(
-    "Measure: cosine similarity between adjacent L2-normalized LSA vectors.",
-    "x3s reports sentence-level transitions; x3p reports paragraph-level transitions.",
-    "Means and SD are macro-level text observations derived from those transition cosines."
-  )
-)
+
+source_note = paste( "Measure: cosine similarity between adjacent L2-normalized LSA vectors.", "x3s reports sentence-level transitions; x3p reports paragraph-level transitions.", "Means and SD are macro-level text observations derived from those transition cosines." ) )
 
 # Note: Core x3 semantic-continuity indices
 
@@ -781,7 +987,7 @@ As we move from the beginning toward the end of this text, do the observed adjac
 
 A positive slope indicates that adjacent-sentence similarity increases across the text. A slope near zero indicates no strong directional change, while a negative slope indicates decreasing adjacent-sentence similarity.
 
-The value represents the estimated change from normalized position 0 to normalized position 1. It does not measure the absolute level of continuity. A text can have a low mean and a stable slope, or a high mean and a strongly negative slope. Therefore, the gradient must be reported together with the mean. 
+The value represents the estimated change from normalized position 0 to normalized position 1. It does not measure the absolute level of continuity. A text can have a low mean and a stable slope, or a high mean and a strongly negative slope. Therefore, the gradient must be reported together with the mean.
 
 # MODUL 8.9 — Display the Human-referenced x3 trajectory plot
 
@@ -883,10 +1089,60 @@ ggplot2::ggsave(
 
 # Note: This cell fits a joint regression model of adjacent-sentence similarity over normalized text position, using the Human baseline as the reference category. It predicts the Human and LM trajectories on a common 0–1 scale and calculates each LM’s difference from Human at the beginning, middle, and end, as well as the mean absolute curve distance. The fitted trajectories, Human-relative summary, regression model, and combined comparison plot are saved for diagnostic analysis. (cf. \# MODUL 6.37d)
 
-# # MODUL 8.10 — Plot the x3pcw paragraph-continuity means
+# Loading data retrosp-cell
 
 ```{r}
+# MODUL 8 — Load the frozen x3pcw paragraph-continuity profile
+# MODUL 8.10 — Freeze the x3pcw paragraph-continuity profile
 
+modul_8_x3pcw_profile_path <- file.path(
+  modul_8_output_dir,
+  "modul_8_x3pcw_paragraph_continuity_profile.rds"
+)
+
+if (file.exists(modul_8_x3pcw_profile_path)) {
+  modul_8_x3pcw_profile <- readRDS(
+    modul_8_x3pcw_profile_path
+  )
+} else {
+  x3pcw_bundle <- readRDS(file.path(
+    measure_output_dir,
+    "modul_6_actual_lsa_x3pcw_paragraph_continuity.rds"
+  ))
+
+  modul_8_x3pcw_profile <- canonical_text_register |>
+    dplyr::select(text_id, text_label, text_order) |>
+    dplyr::left_join(
+      x3pcw_bundle$profiles |>
+        dplyr::select(
+          text_id,
+          x3pcw_adjacent_paragraph_similarity_mean
+        ),
+      by = "text_id"
+    ) |>
+    dplyr::arrange(text_order)
+
+  saveRDS(
+    modul_8_x3pcw_profile,
+    modul_8_x3pcw_profile_path
+  )
+}
+
+stopifnot(
+  nrow(modul_8_x3pcw_profile) == 4L,
+  !anyDuplicated(modul_8_x3pcw_profile$text_id),
+  !anyNA(
+    modul_8_x3pcw_profile$
+      x3pcw_adjacent_paragraph_similarity_mean
+  )
+)
+
+print(modul_8_x3pcw_profile, n = Inf, width = Inf)
+```
+
+# MODUL 8.10 — Plot the x3pcw paragraph-continuity means
+
+```{r}
 # MODUL 8.10 — Plot the x3pcw paragraph-continuity means
 
 modul_8_x3pcw_plot_data <- modul_8_x3pcw_profile |>
@@ -972,8 +1228,7 @@ modul_8_x3pcw_histogram
 
 # MODUL 8.11 — Display human-centered connector continuity
 
-This cell reloads ... + Similarity of an ordered LM connector transition to the fixed ordered Human connector-transition reference. This accounts for both: 1. the connector-semantic content of the two sentences; 2. their sequential roles as preceding sentence and following sentence.
-The resulting vector has 100 dimensions, but no new LSA model is fitted. It simply preserves the order of two existing 50-dimensional vectors. This is preferable to the summed-vector construction because the sum loses direction. For MODUL 6.37i, I recommend the ordered concatenation construction.
+This cell reloads ... + Similarity of an ordered LM connector transition to the fixed ordered Human connector-transition reference. This accounts for both: 1. the connector-semantic content of the two sentences; 2. their sequential roles as preceding sentence and following sentence. The resulting vector has 100 dimensions, but no new LSA model is fitted. It simply preserves the order of two existing 50-dimensional vectors. This is preferable to the summed-vector construction because the sum loses direction. For MODUL 6.37i, I recommend the ordered concatenation construction.
 
 ```{r}
 # MODUL 8.11 — Display Human-centered connector continuity
@@ -1183,36 +1438,24 @@ modul_8_x3cc_table
 
 ```
 
-
 An approximative interpretation scale would look like:
 
-Cosine value	Interpretation
-close to 1	very strong connector continuity
-moderately positive	partially similar connector organisation
-close to 0	little connector-based similarity
-moderately negative	contrasting connector organisation
-close to −1	strongly opposed latent connector profiles
+Cosine value Interpretation close to 1 very strong connector continuity moderately positive partially similar connector organisation close to 0 little connector-based similarity moderately negative contrasting connector organisation close to −1 strongly opposed latent connector profiles
 
--> A positive value means that the connector-only vectors of two adjacent sentences point in a similar latent-semantic direction. A value close to zero means that the connector patterns of the two sentences have little systematic similarity. A negative value means that the two connector-only vectors point in opposing directions in the latent space.
-->  A very high value indicates stability or repetition in connector organisation, but it cannot by itself establish that the discourse is more coherent, sophisticated, or grammatically successful. Likewise, a negative value may reflect a deliberate shift from one propositional relation to another.
+-\> A positive value means that the connector-only vectors of two adjacent sentences point in a similar latent-semantic direction. A value close to zero means that the connector patterns of the two sentences have little systematic similarity. A negative value means that the two connector-only vectors point in opposing directions in the latent space. -\> A very high value indicates stability or repetition in connector organisation, but it cannot by itself establish that the discourse is more coherent, sophisticated, or grammatically successful. Likewise, a negative value may reflect a deliberate shift from one propositional relation to another.
 
 # What x3cc measures
-x3cc — text-internal connector continuity: cosine similarity between the connector-only vectors of two genuinely adjacent sentences within the same text.
-Connector material: CCONJ and SCONJ are represented and evaluated separately.
-Observation: one adjacent-sentence boundary, such as S1↔S2, for one connector type.
-Valid pair: both adjacent sentences must contain a valid vector for the same connector type.
-Mean connector continuity: the mean of all valid adjacent-sentence connector cosines within one text and connector type.
-Pair coverage: the proportion of all adjacent-sentence boundaries for which a valid connector cosine could be calculated.
-Analytical status: a supporting diagnostic within the x3 semantic-continuity indices, not a replacement for the sentence-, paragraph-, or content-word-based core measures.
-Role of the frozen x3cc_bundle:The central analytical object is continuity. The other elements preserve its construction, aggregation, audit trail, and visual reuse.
+
+x3cc — text-internal connector continuity: cosine similarity between the connector-only vectors of two genuinely adjacent sentences within the same text. Connector material: CCONJ and SCONJ are represented and evaluated separately. Observation: one adjacent-sentence boundary, such as S1↔S2, for one connector type. Valid pair: both adjacent sentences must contain a valid vector for the same connector type. Mean connector continuity: the mean of all valid adjacent-sentence connector cosines within one text and connector type. Pair coverage: the proportion of all adjacent-sentence boundaries for which a valid connector cosine could be calculated. Analytical status: a supporting diagnostic within the x3 semantic-continuity indices, not a replacement for the sentence-, paragraph-, or content-word-based core measures. Role of the frozen x3cc_bundle:The central analytical object is continuity. The other elements preserve its construction, aggregation, audit trail, and visual reuse.
 
 # Note: Decoupling of Semantics and Propositional Structure (NEEDS REVISION)
 
-The indices’ x3co plotting (Plot x) suggested that, within a very similar topic and semantic space, the logico‑semantic structure of the discourse is organised relatively differently. As realised through the patterning of connectors, this appears as a connector‑only latent structural skeleton versus a “content mass”. If content‑word similarity shows monotonic decay (e.g., thematic shifts as sentences progress), but connector continuity does not, it means that the logical architecture of the text is decoupled from the topical progression we can observe within the human baseline. So even when the human writer and the models are writing or providing output about basically the same thing, the way they thread that content with coordinating and subordinating relations is not coupled to the semantic content in the same way as in the human texts. 
+The indices’ x3co plotting (Plot x) suggested that, within a very similar topic and semantic space, the logico‑semantic structure of the discourse is organised relatively differently. As realised through the patterning of connectors, this appears as a connector‑only latent structural skeleton versus a “content mass”. If content‑word similarity shows monotonic decay (e.g., thematic shifts as sentences progress), but connector continuity does not, it means that the logical architecture of the text is decoupled from the topical progression we can observe within the human baseline. So even when the human writer and the models are writing or providing output about basically the same thing, the way they thread that content with coordinating and subordinating relations is not coupled to the semantic content in the same way as in the human texts.
 
-# 
+# # MODUL 8.11a — Display the existing MODUL 6 connector-continuity plot
 
 ```{r}
+
 # MODUL 8.11a — Display the existing MODUL 6 connector-continuity plot
 
 modul_6_x3cc_plot_path <- file.path(
@@ -1226,9 +1469,11 @@ knitr::include_graphics(
   modul_6_x3cc_plot_path
 )
 ```
+
 # MODUL 8.11b — Display exact connector inventory
 
 ```{r}
+# MODUL 8.11b — Display exact connector inventory
 
 readRDS(file.path(
   project_root, "measure_outputs",
@@ -1271,6 +1516,13 @@ readRDS(file.path(
 # MODUL 8.11c - Same but with bigger contrast for CCONJ-only display
 
 ```{r}
+# MODUL 8.11c — Same but with bigger contrast for CCONJ-only display
+
+x3cc_plot <- readRDS(file.path(
+  project_root, "measure_outputs",
+  "modul_6_connector_continuity_plot.rds"
+))$data
+
 # 1. Daten filtern und für den 3-Panel-Vergleich vorbereiten
 cconj_data <- x3cc_plot |>
   dplyr::filter(tolower(connector_type) == "cconj") |>
@@ -1330,51 +1582,272 @@ ggplot2::ggsave(
 )
 ```
 
-#
+# temprary inspection
+```{r}
+```
+
+# SUMMARY 2 - CCP-CARD 2 =  — Semantic Similarity Indices CCP-Card
 
 ```{r}
+# MODUL — Semantic Similarity Indices CCP-Card
+# MODUL Semantic Similarity Indices CCP-Card
+
+fmt_ccp <- function(x) ifelse(is.na(x), "NA", ifelse(round(x, 2) == round(x), sprintf("%.0f", x), sprintf("%.2f", x)))
+
+modul_8_semantic_similarity_ccp <- modul_8_x3_core_extended |>
+  dplyr::left_join(
+    modul_8_x3pcw_profile |>
+      dplyr::select(text_id, x3pcw_adjacent_paragraph_similarity_mean),
+    by = "text_id"
+  ) |>
+  tidyr::pivot_longer(
+    c(
+      x3s_adjacent_sentence_similarity_mean,
+      x3p_adjacent_paragraph_similarity_mean,
+      x3_adjacent_sentence_similarity_gradient,
+      x3_adjacent_sentence_similarity_retention,
+      x3pcw_adjacent_paragraph_similarity_mean
+    ),
+    names_to = "measure_id",
+    values_to = "value"
+  ) |>
+  dplyr::left_join(
+    tibble::tribble(
+      ~measure_id, ~indices, ~measure_type, ~measurement_level,
+      "x3s_adjacent_sentence_similarity_mean", "x3s is the mean cosine similarity between adjacent sentence vectors", "mean cosine similarity", "micro",
+      "x3p_adjacent_paragraph_similarity_mean", "x3p is the mean cosine similarity between adjacent paragraph vectors", "mean cosine similarity", "meso",
+      "x3_adjacent_sentence_similarity_gradient", "x3_adjacent_sentence_similarity_gradient", "linear-regression slope over normalized sentence-pair position", "macro",
+      "x3_adjacent_sentence_similarity_retention", "x3_adjacent_sentence_similarity_retention", "final-third minus first-third mean cosine similarity", "macro",
+      "x3pcw_adjacent_paragraph_similarity_mean", "x3pcw paragraph-continuity mean", "mean adjacent-paragraph content-word cosine similarity", "meso"
+    ),
+    by = "measure_id"
+  ) |>
+  dplyr::group_by(measure_id) |>
+  dplyr::mutate(human_reference = value[text_label == "Human"]) |>
+  dplyr::ungroup() |>
+  dplyr::filter(text_label != "Human") |>
+  dplyr::mutate(
+    drift_h = human_reference - value,
+    model = factor(text_label, c("ChatGPT", "Gemini", "Claude")),
+    measure_order = match(measure_id, c(
+      "x3s_adjacent_sentence_similarity_mean",
+      "x3p_adjacent_paragraph_similarity_mean",
+      "x3_adjacent_sentence_similarity_gradient",
+      "x3_adjacent_sentence_similarity_retention",
+      "x3pcw_adjacent_paragraph_similarity_mean"
+    ))
+  ) |>
+  dplyr::arrange(model, measure_order) |>
+  dplyr::group_by(model) |>
+  dplyr::mutate(`No.` = dplyr::row_number()) |>
+  dplyr::ungroup() |>
+  dplyr::transmute(
+    model, `No.`, `Indices bundle` = "semantic_similarity",
+    `Indices` = indices, `Measure type` = measure_type,
+    `Measurement level` = measurement_level,
+    `Interpretative frame` = "cc_interface",
+    `driftₕ` = drift_h, `Human baseline` = human_reference
+  )
+
+stopifnot(nrow(modul_8_semantic_similarity_ccp) == 15L)
+
+modul_8_semantic_similarity_ccp |>
+  gt::gt(groupname_col = "model") |>
+  gt::tab_header(title = gt::md("**Semantic Similarity Indices CCP-Card**")) |>
+  gt::fmt(columns = c(`driftₕ`, `Human baseline`), fns = fmt_ccp) |>
+  gt::cols_align("center", gt::everything()) |>
+  gt::tab_style(
+    gt::cell_text(weight = "bold"),
+    list(gt::cells_column_labels(), gt::cells_row_groups())
+  ) |>
+  gt::tab_style(
+    gt::cell_borders(sides = "all", color = "black", weight = gt::px(1)),
+    list(gt::cells_column_labels(), gt::cells_row_groups(), gt::cells_body())
+  ) |>
+  gt::tab_options(
+    table.font.size = gt::px(10),
+    data_row.padding = gt::px(2),
+    table.background.color = "white",
+    heading.background.color = "white",
+    column_labels.background.color = "white",
+    row_group.background.color = "white"
+  )
 
 ```
 
+Note: x3pcw_adjacent_paragraph_similarity_mean
+
+Each individual adjacent paragraph transition has its own cosine similarity:
+P1 ↔ P2
+P2 ↔ P3
+P3 ↔ P4 ...
+Within each text, these transition-level cosines are averaged. Therefore: x3pcw meanₜ = (1 / nₜ) ∑ᵢ₌₁ⁿᵗ cos(Pᵢ, Pᵢ₊₁)
+This answers exactly:
+On average, how semantically similar are the transitioned adjacent paragraphs within this text?
+
+The CCP-Card then calculates: **drift_h = Human x3pcw mean - LM x3pcw mean**
+
+So the correct sequence is:
+
+individual paragraph-transition cosines
+→ one frozen mean per text
+→ LM − Human drift
+The seven ccp-card indices:
+No.	Indices
+1	Mean adjacent-sentence cosine similarity (x3s)
+2	Mean adjacent-paragraph cosine similarity (x3p)
+3	Adjacent-sentence similarity gradient
+4	Adjacent-sentence similarity retention
+5	Mean adjacent-paragraph content-word cosine similarity (x3pcw)
+6	Mean connector-only adjacent-sentence cosine similarity (CCONJ)
+7	Mean connector-only adjacent-sentence cosine similarity (SCONJ)
+
+============================================
+
+# SUMMARY 3 - CCP-CARD 3
+
+```{r}
+
+# SUMMARY 3 - CCP-CARD 3 — Semantico-Logical Indices CCP-Card
+
+# SUMMARY 3 - CCP-CARD 3 — Semantico-Logical Indices CCP-Card
+
+x3cc_bundle <- readRDS(file.path(
+  project_root, "measure_outputs",
+  "modul_6_actual_lsa_x3co_connector_continuity.rds"
+))
+
+fmt_ccp <- function(x) ifelse(
+  is.na(x), "NA",
+  ifelse(round(x, 2) == round(x), sprintf("%.0f", x), sprintf("%.2f", x))
+)
+
+x3cc_h <- x3cc_bundle$summary |>
+  dplyr::filter(model %in% c("human", "human_baseline")) |>
+  dplyr::select(connector_type, human_reference = x3co_similarity_mean)
+
+x3cc_card <- x3cc_bundle$summary |>
+  dplyr::filter(!model %in% c("human", "human_baseline")) |>
+  dplyr::left_join(x3cc_h, by = "connector_type") |>
+  dplyr::mutate(
+    model = factor(dplyr::recode(as.character(model),
+      chatgpt_native = "ChatGPT", gemini_native = "Gemini",
+      claude_native = "Claude"), c("ChatGPT", "Gemini", "Claude")),
+    connector_type = factor(connector_type, c("CCONJ", "SCONJ")),
+    drift_h = human_reference - x3co_similarity_mean  
+  ) |>
+  dplyr::arrange(model, connector_type) |>
+  dplyr::group_by(model) |>
+  dplyr::mutate(`No.` = dplyr::row_number()) |>
+  dplyr::ungroup() |>
+  dplyr::transmute(
+    model, `No.`,
+    `Indices bundle` = "semantico_logical_continuity",
+    Indices = paste0(
+      "Mean connector-only adjacent-sentence cosine similarity (",
+      connector_type, ")"
+    ),
+    `Measure type` = "mean connector-only cosine similarity",
+    `Measurement level` = "micro",
+    `Interpretative frame` = "cc_interface",
+    `driftₕ` = drift_h,
+    `Human baseline` = human_reference
+  )
+
+x3cc_inventory <- x3cc_bundle$sentence_segments |>
+  dplyr::filter(n_connectors > 0) |>
+  dplyr::mutate(
+    lemma = stringr::str_split(stringr::str_squish(terms), "\\s+"),
+    Text = dplyr::recode(as.character(model),
+      human = "Human", human_baseline = "Human",
+      chatgpt_native = "ChatGPT", gemini_native = "Gemini",
+      claude_native = "Claude")
+  ) |>
+  tidyr::unnest_longer(lemma) |>
+  dplyr::count(connector_type, lemma, Text) |>
+  tidyr::pivot_wider(names_from = Text, values_from = n, values_fill = 0) |>
+  dplyr::select(connector_type, lemma, Human, ChatGPT, Gemini, Claude)
+
+stopifnot(nrow(x3cc_card) == 6L)
+
+htmltools::div(
+  style = "border:1px solid black;background:white;padding:6px;",
+  x3cc_card |>
+    gt::gt(groupname_col = "model") |>
+    gt::tab_header(
+      title = gt::md("**Semantico-Logical Indices CCP-Card**")
+    ) |>
+    gt::fmt(
+      columns = c(`driftₕ`, `Human baseline`),
+      fns = fmt_ccp
+    ) |>
+    gt::cols_align("center", gt::everything()) |>
+    gt::tab_style(
+      gt::cell_text(weight = "bold"),
+      list(gt::cells_column_labels(), gt::cells_row_groups())
+    ) |>
+    gt::tab_style(
+      gt::cell_borders(sides = "all", color = "black", weight = gt::px(1)),
+      list(gt::cells_column_labels(), gt::cells_row_groups(), gt::cells_body())
+    ) |>
+    gt::tab_options(
+      table.font.size = gt::px(10),
+      data_row.padding = gt::px(2),
+      table.background.color = "white",
+      heading.background.color = "white",
+      column_labels.background.color = "white",
+      row_group.background.color = "white"
+    ),
+  htmltools::h4("Exact connector inventory"),
+  x3cc_inventory |>
+    gt::gt(groupname_col = "connector_type") |>
+    gt::cols_label(
+      lemma = "Connector lemma",
+      Human = "Human count",
+      ChatGPT = "ChatGPT count",
+      Gemini = "Gemini count",
+      Claude = "Claude count"
+    ) |>
+    gt::fmt_integer(
+      columns = c(Human, ChatGPT, Gemini, Claude),
+      use_seps = FALSE
+    ) |>
+    gt::cols_align("center", gt::everything()) |>
+    gt::tab_style(
+      gt::cell_text(weight = "bold"),
+      list(gt::cells_column_labels(), gt::cells_row_groups())
+    ) |>
+    gt::tab_style(
+      gt::cell_borders(sides = "all", color = "black", weight = gt::px(1)),
+      list(gt::cells_column_labels(), gt::cells_row_groups(), gt::cells_body())
+    ) |>
+    gt::tab_options(
+      table.font.size = gt::px(10),
+      data_row.padding = gt::px(2),
+      table.background.color = "white",
+      column_labels.background.color = "white",
+      row_group.background.color = "white"
+    )
+)
+```
 
 # Note: x3cw
 
-x3cw is the original construction name for: content-word-only adjacent-paragraph semantic continuity.
-It uses paragraph vectors containing only: NOUN, VERB, ADJ, ADV.
-Each paragraph is projected into the frozen 50-dimensional actual-LSA reference space. 
-Cosine similarity is then calculated between genuinely adjacent paragraphs:P1↔P2,P2↔P3,P3↔P 4,…
-The original measure name was: x3cw_adjacent_paragraph_similarity.
+x3cw is the original construction name for: content-word-only adjacent-paragraph semantic continuity. It uses paragraph vectors containing only: NOUN, VERB, ADJ, ADV. Each paragraph is projected into the frozen 50-dimensional actual-LSA reference space. Cosine similarity is then calculated between genuinely adjacent paragraphs:P1↔P2,P2↔P3,P3↔P 4,… The original measure name was: x3cw_adjacent_paragraph_similarity.
 
-This object: x3cw_projection contains the actual-LSA projections of the content-word paragraph segments.
-Its central component is: x3cw_projection$vectors.Each row is one paragraph vector in the frozen 50-dimensional actual-LSA space. Its role is to preserve the numerical representation used to calculate cosine similarity. It does not itself contain the adjacent-paragraph results.
+This object: x3cw_projection contains the actual-LSA projections of the content-word paragraph segments. Its central component is: x3cw_projection\$vectors.Each row is one paragraph vector in the frozen 50-dimensional actual-LSA space. Its role is to preserve the numerical representation used to calculate cosine similarity. It does not itself contain the adjacent-paragraph results.
 
-This helper function  retrieves two paragraph vectors and calculates:sum(vector_1 * vector_2)
-Because the projected vectors were L2-normalized, their dot product equals cosine similarity.
-The function returns NA when either vector contains missing values. It does not replace invalid comparisons with zero.
-This x3cw_paragraph_pairs is the pair-level analytical table. The original similarity column was: x3cw_adjacent_paragraph_similarity, later on it was renamed  to: x3pcw_adjacent_paragraph_similarity.
-There are 11 adjacent paragraph pairs across the four target texts.
-normalized_position
+This helper function retrieves two paragraph vectors and calculates:sum(vector_1 \* vector_2) Because the projected vectors were L2-normalized, their dot product equals cosine similarity. The function returns NA when either vector contains missing values. It does not replace invalid comparisons with zero. This x3cw_paragraph_pairs is the pair-level analytical table. The original similarity column was: x3cw_adjacent_paragraph_similarity, later on it was renamed to: x3pcw_adjacent_paragraph_similarity. There are 11 adjacent paragraph pairs across the four target texts. normalized_position
 
-The position of each paragraph transition within its text was normalized and the object was named: normalized_position
-pi = i−1/ n−1. The first paragraph boundary receives 0 (= the first transition receives 0), and the final boundary receives 1 (= the final transition receives 1. ).
-Where:
-i is the ordered transition number;
-n is the number of adjacent transitions in that text; 
-For x3pcw: x3pcw_adjacent_paragraph_similarity ~ normalized_position he regression is then:si=β0 +β1pi+εi
-For the gradient model, the function retains only paragraph-transition rows with finite normalized positions and finite x3pcw cosine values. It does not modify or delete rows from the frozen pair-level table.
+The position of each paragraph transition within its text was normalized and the object was named: normalized_position pi = i−1/ n−1. The first paragraph boundary receives 0 (= the first transition receives 0), and the final boundary receives 1 (= the final transition receives 1. ). Where: i is the ordered transition number; n is the number of adjacent transitions in that text; For x3pcw: x3pcw_adjacent_paragraph_similarity \~ normalized_position he regression is then:si=β0 +β1pi+εi For the gradient model, the function retains only paragraph-transition rows with finite normalized positions and finite x3pcw cosine values. It does not modify or delete rows from the frozen pair-level table.
 
 In the completed x3pcw calculation, all 11 pair-level x3pcw values were finite. Therefore, no substantive paragraph transition was actually lost from the final gradient analysis.
 
-Its role is to make trajectories from texts with different numbers of paragraphs comparable on the same beginning-to-end scale. It is not a similarity measure or the positional predictor used for the gradient. However,the positional predictor for the gradients is normalized_position. It is not an x3 measure itself, but the ordered 0–1 predictor used to estimate how an x3 semantic-continuity measure changes from the beginning to the end of a text.
-For both x3s and x3pcw, the positional predictor is: normalized_position.
+Its role is to make trajectories from texts with different numbers of paragraphs comparable on the same beginning-to-end scale. It is not a similarity measure or the positional predictor used for the gradient. However,the positional predictor for the gradients is normalized_position. It is not an x3 measure itself, but the ordered 0–1 predictor used to estimate how an x3 semantic-continuity measure changes from the beginning to the end of a text. For both x3s and x3pcw, the positional predictor is: normalized_position.
 
+The original text-level summary table is in the object called: x3cw_profiles; and its purpose was to deliver the later renamed:x3pcw_adjacent_paragraph_similarity_mean. This mean answers: How high or low is content-word-based adjacent-paragraph semantic continuity across the text?
 
-The original text-level summary table is in the object called: x3cw_profiles; and its purpose was to deliver the later renamed:x3pcw_adjacent_paragraph_similarity_mean. This mean answers:
-How high or low is content-word-based adjacent-paragraph semantic continuity across the text?
-
-x3 semantic-continuity indices
-- x3s is sentence-level adjacent semantic continuity (x3s_adjacent_sentence_similarity).
-- x3p
+x3 semantic-continuity indices - x3s is sentence-level adjacent semantic continuity (x3s_adjacent_sentence_similarity). - x3p
 
 x3p is adjacent-paragraph semantic continuity using the complete seven-POS target layer:
 
@@ -1382,95 +1855,55 @@ cw: NOUN, PROPN, VERB,ADJ, ADV; co: CCONJ, SCONJ. x3p remains conceptually disti
 
 For the forthcoming y4 comparison, x3p is not the matched measure.
 
-This function calculate_x3pcw_gradient() fits one separate linear model within each text:
-x3pcw_adjacent_paragraph_similarity ~ normalized_position
+This function calculate_x3pcw_gradient() fits one separate linear model within each text: x3pcw_adjacent_paragraph_similarity \~ normalized_position
 
-n_valid_x3pcw_gradient_pairs - this is the number of valid adjacent-paragraph transitions available for estimating the gradient. It is essential for interpretation because, ChatGPT has three transitions;Human has four transitions; Claude and Gemini have only two transitions. Claude’s and Gemini’s slopes are therefore two-point differences rather than sustained trajectories. x3pcw_topic_continuity_first - is the observed x3pcw cosine at the first paragraph boundary. It represents the starting level of content-word paragraph continuity. 
-x3pcw_topic_continuity_change - this is final similarity − first similarity. It expresses the direct observed change between the first and final paragraph transitions. It is related to, but not identical with, the regression gradient.
+n_valid_x3pcw_gradient_pairs - this is the number of valid adjacent-paragraph transitions available for estimating the gradient. It is essential for interpretation because, ChatGPT has three transitions;Human has four transitions; Claude and Gemini have only two transitions. Claude’s and Gemini’s slopes are therefore two-point differences rather than sustained trajectories. x3pcw_topic_continuity_first - is the observed x3pcw cosine at the first paragraph boundary. It represents the starting level of content-word paragraph continuity. x3pcw_topic_continuity_change - this is final similarity − first similarity. It expresses the direct observed change between the first and final paragraph transitions. It is related to, but not identical with, the regression gradient.
 
-x3pcw_adjacent_paragraph_similarity_gradient is the estimated regression slope over normalized text position. It answers:
-Does content-word paragraph continuity tend to increase, decrease, or remain comparatively stable from the beginning to the end of the text?
-Interpretation:
-positive: increasing tendency;
-near zero: little net linear direction;
-negative: declining tendency. (x3pcw_adjacent_paragraph_gradient_se is the standard error of the estimated slope. It is retained only where at least three transitions are available. It remains NA for Claude and Gemini.) 
+x3pcw_adjacent_paragraph_similarity_gradient is the estimated regression slope over normalized text position. It answers: Does content-word paragraph continuity tend to increase, decrease, or remain comparatively stable from the beginning to the end of the text? Interpretation: positive: increasing tendency; near zero: little net linear direction; negative: declining tendency. (x3pcw_adjacent_paragraph_gradient_se is the standard error of the estimated slope. It is retained only where at least three transitions are available. It remains NA for Claude and Gemini.)
 
-x3pcw_adjacent_paragraph_gradient_r2 - is the proportion of variation in the observed paragraph-continuity values represented by the fitted straight line. It does not measure the strength of continuity itself.
-Interpretation:
-higher R2 : the linear trajectory represents the observed points relatively well;
-low R2: the observed trajectory fluctuates and the straight line is a weak abstraction;
-NA: insufficient observations for a meaningful diagnostic.
+x3pcw_adjacent_paragraph_gradient_r2 - is the proportion of variation in the observed paragraph-continuity values represented by the fitted straight line. It does not measure the strength of continuity itself. Interpretation: higher R2 : the linear trajectory represents the observed points relatively well; low R2: the observed trajectory fluctuates and the straight line is a weak abstraction; NA: insufficient observations for a meaningful diagnostic.
 
-MODUL 5 y4 indice for comparison: y4_content_jaccard, measures exact lexical overlap between adjacent paragraphs.
-For each identical adjacent paragraph boundary, it compares the sets of content lemmas using the Jaccard coefficient:
+MODUL 5 y4 indice for comparison: y4_content_jaccard, measures exact lexical overlap between adjacent paragraphs. For each identical adjacent paragraph boundary, it compares the sets of content lemmas using the Jaccard coefficient:
 
-J(A,B)= ∣A∩B∣/∣A∪B∣ where A and B are the content-lemma sets of two adjacent paragraphs. It uses the same four content-word categories as x3pcw:NOUN, VERB, ADJ, ADV.
-A high y4 value means that many exact content lemmas recur across the paragraph boundary. It does not capture synonymy or semantic similarity between different words. 
-The final comparison is: y4_content_jaccard ↔ x3pcw_adjacent_paragraph_similarity
-Both measures:
-use the same 11 adjacent paragraph transitions;
-- operate at paragraph level;
-- use NOUN, VERB, ADJ, and ADV;
-- preserve one observation per identical paragraph boundary.
-Their meanings differ:
-   y4_content_jaccard → exact recurrence of content lemmas
-   x3pcw_adjacent_paragraph_similarity → latent semantic continuity between content-word paragraph vectors
-This is therefore a comparison between lexical recurrence and semantic continuity
+J(A,B)= ∣A∩B∣/∣A∪B∣ where A and B are the content-lemma sets of two adjacent paragraphs. It uses the same four content-word categories as x3pcw:NOUN, VERB, ADJ, ADV. A high y4 value means that many exact content lemmas recur across the paragraph boundary. It does not capture synonymy or semantic similarity between different words. The final comparison is: y4_content_jaccard ↔ x3pcw_adjacent_paragraph_similarity Both measures: use the same 11 adjacent paragraph transitions; - operate at paragraph level; - use NOUN, VERB, ADJ, and ADV; - preserve one observation per identical paragraph boundary. Their meanings differ: y4_content_jaccard → exact recurrence of content lemmas x3pcw_adjacent_paragraph_similarity → latent semantic continuity between content-word paragraph vectors This is therefore a comparison between lexical recurrence and semantic continuity
 
-* Representation level and observation level overview
-| Dimension            | Question                                                      |
-| -------------------- | ------------------------------------------------------------- |
-| Representation level | What linguistic unit was vectorized?                          |
-| Observation unit     | What is one measured data point?                              |
-| Aggregation level    | At what level is the reported result summarised?              |
-| Analytical function  | Is it a level, variability, direction, or diagnostic measure? |
+-   Representation level and observation level overview \| Dimension \| Question \| \| -------------------- \| ------------------------------------------------------------- \| \| Representation level \| What linguistic unit was vectorized? \| \| Observation unit \| What is one measured data point? \| \| Aggregation level \| At what level is the reported result summarised? \| \| Analytical function \| Is it a level, variability, direction, or diagnostic measure? \|
 
-* Micro (Local(Clauses, PoS, mwCombos)/Sentence),Meso (Paragraph-level) and Macro-level (overall text) classification
+-   Micro (Local(Clauses, PoS, mwCombos)/Sentence),Meso (Paragraph-level) and Macro-level (overall text) classification
 
-| Analytical unit                      | Representation / observation level                      |   |
-| ------------------------------------ | ------------------------------------------------------- | - |
-| Sentence vector                      | Local sentence level within its boundaries              |   |
-| Adjacent sentence pair               | Local transition level                                  |   |
-| Paragraph vector                     | Meso-level within p and its sect boundaries             |   |
-| Adjacent paragraph pair              | Meso-level transition level                             |   |
-| Text-level mean, SD, gradient, (R^2) | Macro-level summary of local or meso-level observations |   |
+| Analytical unit | Representation / observation level |   |
+|-----------------------|-------------------------------------|-------------|
+| Sentence vector | Local sentence level within its boundaries |  |
+| Adjacent sentence pair | Local transition level |  |
+| Paragraph vector | Meso-level within p and its sect boundaries |  |
+| Adjacent paragraph pair | Meso-level transition level |  |
+| Text-level mean, SD, gradient, (R\^2) | Macro-level summary of local or meso-level observations |  |
+
 Micro: local clauses, POS, mwCombos, and sentences; Meso: paragraph level; Macro: overall text level.
 
-* | Level of (chunk) representation      | Meaning                        |
-| ----------- | --------------------------------------------------------- |
-| **s-level** | Sentence-level representation or observation              |
-| **p-level** | Paragraph-level representation or observation             |
-| **t-level** | Whole-text-level representation or aggregated observation |
+-   
+
+    | Level of (chunk) representation | Meaning |
+    |----------------|--------------------------------------------------------|
+    | **s-level** | Sentence-level representation or observation |
+    | **p-level** | Paragraph-level representation or observation |
+    | **t-level** | Whole-text-level representation or aggregated observation |
 
 Importante: The level on which an index is constructed must be distinguished from the level at which its resulting observation is reported. A t-level result may be derived from ordered s-level or p-level observations.
 
+-   y4–x3pcw relationship analysis, which is a data-alignment object, because it ensures that each y4 value and each x3pcw value refer to the exact same paragraph boundary. \| Text \| Paragraph pair \| y4 \| x3pcw \| \| ----- \| -------------- \| ------------------------: \| ----------------------------: \| \| Human \| P1–P2 \| lexical overlap for P1–P2 \| semantic similarity for P1–P2 \| \| Human \| P2–P3 \| lexical overlap for P2–P3 \| semantic similarity for P2–P3 \|
 
-* y4–x3pcw relationship analysis, which is a data-alignment object, because it ensures that each y4 value and each x3pcw value refer to the exact same paragraph boundary.
-| Text  | Paragraph pair |                        y4 |                         x3pcw |
-| ----- | -------------- | ------------------------: | ----------------------------: |
-| Human | P1–P2          | lexical overlap for P1–P2 | semantic similarity for P1–P2 |
-| Human | P2–P3          | lexical overlap for P2–P3 | semantic similarity for P2–P3 |
+y4_x3pcw_matched_transitions role is to guarantee that lexical and semantic values are compared boundary by boundary rather than accidentally joining different transitions. (The object was frozen with 11 rows: seven LM transitions and four Human transitions, with no missing y4 or x3pcw values.) The next question becomes: Across matched paragraph boundaries, is greater exact content-lemma recurrence associated with greater latent semantic continuity? The pooled coefficient combines two kinds of variation: 1. within-text variation 2. between-text variation It may therefore be influenced by the fact that the Human transitions occupy a different region of the y4–x3pcw space from the LM transitions. What is the pooled coefficient? The pooled coefficient is the correlation or regression coefficient calculated using all 11 matched p-level transition observations together: 4 Human transitions + 7 LM transitions =11 pooled transitions The pooled regression is: x3pcw_adjacent_paragraph_similarity \~ y4_content_jaccard using all four texts in one model. (pooled = Human and LM p-level transition observations are analysed together in one descriptive relationship) Did we account for Human influencing the pooled result? Of course, that is exactly why three scopes were calculated:
 
-y4_x3pcw_matched_transitions role is to guarantee that lexical and semantic values are compared boundary by boundary rather than accidentally joining different transitions. (The object was frozen with 11 rows: seven LM transitions and four Human transitions, with no missing y4 or x3pcw values.)
-The next question becomes: Across matched paragraph boundaries, is greater exact content-lemma recurrence associated with greater latent semantic continuity? The pooled coefficient combines two kinds of variation:
-1. within-text variation
-2. between-text variation
-It may therefore be influenced by the fact that the Human transitions occupy a different region of the y4–x3pcw space from the LM transitions. 
-What is the pooled coefficient? The pooled coefficient is the correlation or regression coefficient calculated using all 11 matched p-level transition observations together: 4 Human transitions + 7 LM transitions =11 pooled transitions
-The pooled regression is:  x3pcw_adjacent_paragraph_similarity ~ y4_content_jaccard using all four texts in one model.
-(pooled = Human and LM p-level transition observations are analysed together in one descriptive relationship)
-Did we account for Human influencing the pooled result? Of course, that is exactly why three scopes were calculated:
+| Scope | p-level observations | Function |
+|---------------|--------------:|------------------------------------------|
+| All texts | 11 | Pooled descriptive relationship |
+| LMs only | 7 | Checks whether the relationship remains without Human |
+| Human only | 4 | Exploratory within-Human relationship |
 
+-   In the available observations, exact content-lemma overlap co-varies strongly with semantic continuity within the Human text, whereas this relationship is absent among the seven LM transitions. More texts per source would be required before presenting it as a real model-level contrast.
 
-| Scope      | p-level observations | Function                                              |
-| ---------- | -------------------: | ----------------------------------------------------- |
-| All texts  |                   11 | Pooled descriptive relationship                       |
-| LMs only   |                    7 | Checks whether the relationship remains without Human |
-| Human only |                    4 | Exploratory within-Human relationship                 |
-
-* In the available observations, exact content-lemma overlap co-varies strongly with semantic continuity within the Human text, whereas this relationship is absent among the seven LM transitions. More texts per source would be required before presenting it as a real model-level contrast.
-
-#  MODUL 8.12 — Display the x3pcw mean, change, and gradient profile
+# MODUL 8.12 — Display the x3pcw mean, change, and gradient profile
 
 ```{r}
 
@@ -1690,33 +2123,29 @@ modul_8_x3pcw_profile_table <-
 
 modul_8_x3pcw_profile_table
 ```
-# Note: Measurement definition
-| Column         | Exact measure                                                                              |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| Mean           | Mean cosine similarity across adjacent content-word paragraph vectors                      |
-| First          | Cosine similarity at the first adjacent-paragraph transition                               |
-| Final          | Cosine similarity at the final adjacent-paragraph transition                               |
-| Change         | Final cosine minus first cosine                                                            |
-| Gradient       | Linear-regression slope of cosine similarity over normalized paragraph-transition position |
-| Gradient SE    | Standard error of the linear-regression slope                                              |
-| Gradient (R^2) | (R^2) of the regression of cosine similarity on normalized position                        |
-| N              | Number of valid adjacent-paragraph transition observations                                 |
 
-- The gradient model is: x3pcw cosine similarity=β0​+β1​(normalized paragraph-transition position)+ε
-- In short: 
-          + Mean cosine similarity
-          + Linear-regression slope of cosine over normalized position
-          + R² of that linear regression
-          + Pearson correlation between y4 Jaccard and x3pcw cosine
-For x3pcw:
+# Note: Measurement definition
+
+| Column | Exact measure |
+|---------------|---------------------------------------------------------|
+| Mean | Mean cosine similarity across adjacent content-word paragraph vectors |
+| First | Cosine similarity at the first adjacent-paragraph transition |
+| Final | Cosine similarity at the final adjacent-paragraph transition |
+| Change | Final cosine minus first cosine |
+| Gradient | Linear-regression slope of cosine similarity over normalized paragraph-transition position |
+| Gradient SE | Standard error of the linear-regression slope |
+| Gradient (R\^2) | (R\^2) of the regression of cosine similarity on normalized position |
+| N | Number of valid adjacent-paragraph transition observations |
+
+-   The gradient model is: x3pcw cosine similarity=β0​+β1​(normalized paragraph-transition position)+ε
+-   In short: + Mean cosine similarity + Linear-regression slope of cosine over normalized position + R² of that linear regression + Pearson correlation between y4 Jaccard and x3pcw cosine For x3pcw:
 
 Each cosine is a meso-level adjacent-paragraph transition observation. The mean summarizes all such meso-level cosine observations within one text and is therefore a macro-level text observation. The gradient uses their ordered sequence and is also a macro-level text observation.
 
-#Technical Note for Modul 8.13 related to # MODUL 6.38b: 
-This cell reads the two frozen pair-level sources, verifies identical paragraph boundaries, creates normalized within-text position, and freezes the 11-transition table. The y4 source already contains paragraph_number, next_paragraph_number, and y4_content_jaccard.
-* We are doing this to test whether exact content-word repetition (y4) actually co-varies with latent paragraph-level Topic Continuity (x3pcw) across the same 11 paragraph transitions. The joined table is needed because the correlation, regression, and scatterplot require both measures aligned row by row for each identical transition.
+#Technical Note for Modul 8.13 related to \# MODUL 6.38b: This cell reads the two frozen pair-level sources, verifies identical paragraph boundaries, creates normalized within-text position, and freezes the 11-transition table. The y4 source already contains paragraph_number, next_paragraph_number, and y4_content_jaccard. \* We are doing this to test whether exact content-word repetition (y4) actually co-varies with latent paragraph-level Topic Continuity (x3pcw) across the same 11 paragraph transitions. The joined table is needed because the correlation, regression, and scatterplot require both measures aligned row by row for each identical transition.
 
-# # MODUL 8.13 — Display the y4–x3pcw relationship diagnostics
+# \# MODUL 8.13 — Display the y4–x3pcw relationship diagnostics
+
 This cell loads the frozen y4–x3pcw relationship diagnostics and displays the all-text, LM-only, and Human-only results. It does not rematch paragraph boundaries or recalculate Jaccard coefficients, cosine similarities, correlations, or regressions.
 
 ```{r}
@@ -1938,33 +2367,26 @@ modul_8_y4_x3pcw_diagnostics_gt <-
 
 modul_8_y4_x3pcw_diagnostics_gt
 ```
-Note: # Interpretative note:
 
-The primary all-text analysis suggests 
+Note: \# Interpretative note:
 
-greater exact content-lemma recurrence
-tends to coincide with greater latent Topic Continuity, but only within the human baseline. The LM-only result is essentially zero:
+The primary all-text analysis suggests
 
-Pearson r = −0.0224
-Spearman ρ = −0.0714
-R² = 0.0005
+greater exact content-lemma recurrence tends to coincide with greater latent Topic Continuity, but only within the human baseline. The LM-only result is essentially zero:
+
+Pearson r = −0.0224 Spearman ρ = −0.0714 R² = 0.0005
 
 This means that exact content-word repetition does not meaningfully predict x3pcw Topic Continuity across the seven LM transitions!
 
 The positive pooled relationship appears to be exclusivelly influenced by the four Human transitions, which show a strong positive pattern. Because the Human analysis has only four observations, it must remain exploratory.
 
-Conclusive note: Across all eleven transitions, exact content-lemma recurrence showed a moderate positive descriptive association with latent Topic Continuity. This relationship disappeared when the analysis was restricted to the seven LM transitions, suggesting that the pooled association was substantially influenced by the Human paragraph transitions. Exact lexical recurrence and latent semantic continuity therefore cannot be treated as interchangeable properties in the present data.
-The way the LMs use lexical material repetitively to maintain Topic Continuity does not lead to a corresponding Topic-Continuity resolution as measured with LSA. This is therefore one of the clearest decoupling indices the CCP has shown so far: exact lexical recurrence and latent semantic continuity are structurally distinct and do not necessarily co-vary.
+Conclusive note: Across all eleven transitions, exact content-lemma recurrence showed a moderate positive descriptive association with latent Topic Continuity. This relationship disappeared when the analysis was restricted to the seven LM transitions, suggesting that the pooled association was substantially influenced by the Human paragraph transitions. Exact lexical recurrence and latent semantic continuity therefore cannot be treated as interchangeable properties in the present data. The way the LMs use lexical material repetitively to maintain Topic Continuity does not lead to a corresponding Topic-Continuity resolution as measured with LSA. This is therefore one of the clearest decoupling indices the CCP has shown so far: exact lexical recurrence and latent semantic continuity are structurally distinct and do not necessarily co-vary.
 
 More specifically, the LM-only analysis shows that the repetitive use of content lemmas does not contribute at all to explaining variation in x3pcw Topic Continuity:
 
+r=-0.0224,\qquad \rho=-0.0714,\qquad R\^2=0.0005.
 
-r=-0.0224,\qquad
-\rho=-0.0714,\qquad
-R^2=0.0005.
-
-Interpretation Note:  The LMs can therefore use lexical material repetitively to maintain the appearance of topic continuity without this repetition structurally leading to a corresponding latent Topic-Continuity resolution in the LSA space, something we know from Bajohr’s observations about “surface cohesion.” However, the CCP provides a more fine-grained hypothesis: in a deeper sense, as explained throughout the Theoretical Part, LMs are not even cohesive in a human-centered manner. Their cohesion is not motivated by meaning generation (which would converge on coherence), but by a task-driven notion of topicality. The result does not establish causality, but it provides strong descriptive evidence that lexical repetition cannot be treated as equivalent to semantic Topic Continuity.
-# 14
+Interpretation Note: The LMs can therefore use lexical material repetitively to maintain the appearance of topic continuity without this repetition structurally leading to a corresponding latent Topic-Continuity resolution in the LSA space, something we know from Bajohr’s observations about “surface cohesion.” However, the CCP provides a more fine-grained hypothesis: in a deeper sense, as explained throughout the Theoretical Part, LMs are not even cohesive in a human-centered manner. Their cohesion is not motivated by meaning generation (which would converge on coherence), but by a task-driven notion of topicality. The result does not establish causality, but it provides strong descriptive evidence that lexical repetition cannot be treated as equivalent to semantic Topic Continuity. 
 
 ```{r}
 # MODUL 8.13 — Display frozen y4–x3pcw diagnostics
@@ -2026,69 +2448,36 @@ readRDS(file.path(
     table.font.color = "black"
   )
 ```
-# Note: # Note: The Semantic Coherence Matrix
-In the yet to follow matrix, Topic Continuity (operationalized as adjacent semantic similarity) is a graded measure of semantic continuity that can be higher or lower. The Topic-continuity gradient represents the change in adjacent semantic similarity over normalized text position (here on paragraph level, a paragraph was vectorized for the LSA to be applied). The x3 (x3s [sentnce-level], x3p [paragraph-level], x3pcw [content words over paragraphs]) indices were calculated over 
-x3s sentence pairs:       102
-x3s profiles:               4
-+
-x3p paragraph pairs:       11
-x3p profiles:               4
-+
-x3pcw paragraph pairs:     11
-x3pcw profiles:             4
 
+# Note: The Semantic Coherence Matrix
 
-Current x3pcw results
-Mean Topic-Continuity level
-Human      0.3056374
-Claude     0.2454105
-Gemini     0.1643951
-ChatGPT    0.1482608
+In the yet to follow matrix, Topic Continuity (operationalized as adjacent semantic similarity) is a graded measure of semantic continuity that can be higher or lower. The Topic-continuity gradient represents the change in adjacent semantic similarity over normalized text position (here on paragraph level, a paragraph was vectorized for the LSA to be applied). The x3 (x3s \[sentnce-level\], x3p \[paragraph-level\], x3pcw \[content words over paragraphs\]) indices were calculated over x3s sentence pairs: 102 x3s profiles: 4 + x3p paragraph pairs: 11 x3p profiles: 4 + x3pcw paragraph pairs: 11 x3pcw profiles: 4
+
+Current x3pcw results Mean Topic-Continuity level Human 0.3056374 Claude 0.2454105 Gemini 0.1643951 ChatGPT 0.1482608
 
 Ranking:
 
-Human > Claude > Gemini > ChatGPT
-Topic-continuity gradients
-ChatGPT   +0.11153652
-Claude    −0.13371286
-Gemini    −0.27977701
-Human     +0.05262017
+Human \> Claude \> Gemini \> ChatGPT Topic-continuity gradients ChatGPT +0.11153652 Claude −0.13371286 Gemini −0.27977701 Human +0.05262017
 
 Interpretation:
 
-Human
-→ highest overall Topic Continuity;
-  small positive trajectory
+Human → highest overall Topic Continuity; small positive trajectory
 
-Claude
-→ relatively high Topic Continuity;
-  declining trajectory
+Claude → relatively high Topic Continuity; declining trajectory
 
-ChatGPT
-→ lowest overall Topic Continuity;
-  improving trajectory from a very low starting point
+ChatGPT → lowest overall Topic Continuity; improving trajectory from a very low starting point
 
-Gemini
-→ low Topic Continuity;
-  strongest decline
+Gemini → low Topic Continuity; strongest decline
 
 For texts with only two paragraph transitions, gradient standard error and R 2 remain NA.
 
-Observed R
-2
- values:
+Observed R 2 values:
 
-ChatGPT   0.1062
-Human     0.0367
-Claude    NA
-Gemini    NA
+ChatGPT 0.1062 Human 0.0367 Claude NA Gemini NA
 
 The low values for ChatGPT and Human show that their trajectories are not strongly linear.
 
-Semantic Coherence Matrix
-Topic-continuity level	Positive or near-stable gradient	Negative gradient
-High	Human: high and comparatively stable continuity	Claude: high level, fading continuity
-Low	ChatGPT: low but improving continuity	Gemini: low level, rapid continuity loss
+Semantic Coherence Matrix Topic-continuity level Positive or near-stable gradient Negative gradient High Human: high and comparatively stable continuity Claude: high level, fading continuity Low ChatGPT: low but improving continuity Gemini: low level, rapid continuity loss
 
 Out of need for normalization, we hypothesize a idealized Point d’Or which configaration would be
 
@@ -2100,14 +2489,13 @@ Topic Continuity (Level): This is given by the mean of adjacent semantic similar
 
 Trajectory (Gradient): This is given by the change in adjacent semantic similarity over normalized text (continuiation). It answers the question: Does the topic continuity increase, decrease, or remain stable as the text progresses?
 
-Hovewer it appears obvious to ask whether and how is paragraph-level LSA Topic Continuity associated with exact content-lemma overlap? Because current text-level rankings appear different: y4 content-lemma overlap → 1.ChatGPT > 2. Human > 3.Gemini > 4. Claude and x3pcw Topic Continuity → 1. Human > 2. Claude > 3. Gemini > 4. ChatGPT,  the analysis asks whether higher exact content-lemma overlap predicts higher LSA-based Topic Continuity, which motivates the the later pair-level correlation analysis. Therefore to grasp that central research question at this point the relevant measures become  y4 (content_jaccard) and x3pcw and its exploring their relation:
+Hovewer it appears obvious to ask whether and how is paragraph-level LSA Topic Continuity associated with exact content-lemma overlap? Because current text-level rankings appear different: y4 content-lemma overlap → 1.ChatGPT \> 2. Human \> 3.Gemini \> 4. Claude and x3pcw Topic Continuity → 1. Human \> 2. Claude \> 3. Gemini \> 4. ChatGPT, the analysis asks whether higher exact content-lemma overlap predicts higher LSA-based Topic Continuity, which motivates the the later pair-level correlation analysis. Therefore to grasp that central research question at this point the relevant measures become y4 (content_jaccard) and x3pcw and its exploring their relation:
 
 y4_content_jaccard ↔ x3pcw_adjacent_paragraph_similarity
 
 Both measures use the same 11 adjacent paragraph transitions, i.e. they use NOUN, VERB, ADJ, ADV and operate on paragraph level.
 
-y4_content_jaccard shows the exact recurrence of content lemmas, while x3pcw is intended to latent semantic Topic Continuity. 
-
+y4_content_jaccard shows the exact recurrence of content lemmas, while x3pcw is intended to latent semantic Topic Continuity.
 
 # MODUL 8.15 — Display frozen y4–x3pcw continuity-waves plot
 
@@ -2167,9 +2555,10 @@ readRDS(file.path(
 ```
 
 # Note: Sentence → title mean
+
 Each body sentence was compared with the shared main-title vector using cosine similarity. The sentence similarities were then averaged separately for each text. Paragraph → title mean Each original body paragraph was compared with the same main-title vector. The paragraph similarities were then averaged separately for each text. Whole text → title The complete body text was represented by one LSA vector and compared once with the main-title vector. Therefore, this is a single cosine similarity, not a mean of sentence or paragraph values.
 
-* Note: Main new measure - x4_paragraph_subheading_similarity_mean -\> For each text:
+-   Note: Main new measure - x4_paragraph_subheading_similarity_mean -\> For each text:
 
 merged Section 1 was compared with Subheading 1; merged Section 2 was compared with Subheading 2; merged Section 3 was compared with Subheading 3; the three cosine similarities were averaged equally.
 
@@ -2179,8 +2568,7 @@ Each comparison contributes exactly one third to the final value:=\> s1+s2+s3/3
 
 Caveat note:The paragraph-to-subheading similarity should be interpreted cautiously because the subheadings may have been added after the body text had already been written.
 
-(In that case, the measure captures the retrospective semantic fit between each section and its assigned subheading, rather than necessarily showing whether the text was originally developed in response to/toward that subheading.) \#
-* # Note: These numbers say, how well each model and the human baseline “sticks to its own headings” at different structural levels. Interpreting the columns as LSA‑based semantic similarity between each unit and its title (higher = more on‑topic):
+(In that case, the measure captures the retrospective semantic fit between each section and its assigned subheading, rather than necessarily showing whether the text was originally developed in response to/toward that subheading.) \# \* \# Note: These numbers say, how well each model and the human baseline “sticks to its own headings” at different structural levels. Interpreting the columns as LSA‑based semantic similarity between each unit and its title (higher = more on‑topic):
 
 Whole text → title: All four have the highest values here (0.26–0.46), so at the macro level every text broadly fits its overall title. The human text is strongest (0.4571), followed by Claude, then ChatGPT, with Gemini lowest.
 
@@ -2228,12 +2616,14 @@ readRDS(file.path(
     stub.background.color = "white"
   )
 ```
-# Note:  Gemini was intentionally excluded because of the Markdown-related annotation corruption.
+
+# Note: Gemini was intentionally excluded because of the Markdown-related annotation corruption.
+
 # Meaning of the MODUL 6.40 diagnostics
 
 n_sw_expected: all 61 seed-word occurrences prescribed by the prompt. n_sw_detected: prescribed seed-word occurrences actually found in the text. n_sw_annotated: detected occurrences with both lemma and POS annotation. n_sw_in_model: detected and annotated occurrences with an eligible POS whose lemma exists in the actual-LSA vocabulary. These exact rows can form the seed vector. n_sw_oov: detected and LSA-relevant occurrences whose lemmas are outside the actual-LSA vocabulary. \# Note: n_sw_detected is used within MODUL 6.40 as an exploratory x4-associated diagnostic of expected seed-word presence. The retained values are 48/61 for ChatGPT and 50/61 for Claude. Gemini is excluded because retained Markdown emphasis markers systematically corrupted parts of its token and POS annotation. The Human baseline is excluded from the comparative diagnostic because it is the source of the expected seed-word list and supplies the Human-derived seed component for MODUL 6.41. n_sw_detected remains separate from x4_text_prompt_induced_ass_net_similarity and must not be averaged with or added to the cosine score calculated in MODUL 6.42. During final integration, values are available only for ChatGPT and Claude; Gemini and Human should remain missing for this diagnostic, with their respective exclusion reasons documented. \# Because n_sw_detected equals n_sw_annotated for both models, there is no annotation failure among the detected words. Instead:
 
-ChatGPT omitted 13 required seed-word occurrences. Claude omitted 11 required seed-word occurrences. Of the detected words, only 25 and 27 respectively can enter the actual-LSA vector because the remaining detected words have excluded POS categories or are OOV. 
+ChatGPT omitted 13 required seed-word occurrences. Claude omitted 11 required seed-word occurrences. Of the detected words, only 25 and 27 respectively can enter the actual-LSA vector because the remaining detected words have excluded POS categories or are OOV.
 
 # 
 
@@ -2284,9 +2674,10 @@ dplyr::left_join(
   )
 
 ```
-# Note: 
-The seed-word list was fixed at 61 expected seed words for every text. However, not every LM implemented all 61 seed words, resulting in detected seed-word subsets of 48 for ChatGPT and 50 for Claude. In addition, only seed words belonging to the selected LSA categories—NOUN, PROPN, VERB, ADJ, ADV, CCONJ, and SCONJ—could enter the LSA projection, while many function words were excluded by design. The remaining seed words also had to be represented in the frozen actual-LSA vocabulary. Consequently, the final Seed-word nets are based on 35 seed words in model for Human, 25 for ChatGPT, and 27 for Claude. This reduction is therefore mainly due to incomplete LM implementation, POS-based LSA selection, and OOV cases, rather than an additional annotation loss.
 
+# Note:
+
+The seed-word list was fixed at 61 expected seed words for every text. However, not every LM implemented all 61 seed words, resulting in detected seed-word subsets of 48 for ChatGPT and 50 for Claude. In addition, only seed words belonging to the selected LSA categories—NOUN, PROPN, VERB, ADJ, ADV, CCONJ, and SCONJ—could enter the LSA projection, while many function words were excluded by design. The remaining seed words also had to be represented in the frozen actual-LSA vocabulary. Consequently, the final Seed-word nets are based on 35 seed words in model for Human, 25 for ChatGPT, and 27 for Claude. This reduction is therefore mainly due to incomplete LM implementation, POS-based LSA selection, and OOV cases, rather than an additional annotation loss.
 
 # 
 
@@ -2337,11 +2728,177 @@ readRDS(file.path(
     stub.background.color = "white"
   )
 ```
-# Note: 
-LM–Human comparisons show how closely each LM text aligns semantically with the Human text.LM–LM comparisons show how closely the LM texts align with one another.
-Thus, the LM texts are more similar to one another than to Human. The cosine measures semantic direction.
 
-# # MODUL 8.19 — Render the frozen x2 distributional-plausibility architecture
+# Note:
+
+LM–Human comparisons show how closely each LM text aligns semantically with the Human text.LM–LM comparisons show how closely the LM texts align with one another. Thus, the LM texts are more similar to one another than to Human. The cosine measures semantic direction.
+
+# SUMMARY 4 - CCP-CARD 4 — Internal-Consistency Proxy Indices CCP-Card
+
+```{r}
+# SUMMARY 4 - CCP-CARD 4 — Internal-Consistency Proxy Indices CCP-Card
+
+fmt_ccp <- \(x) ifelse(is.na(x), "NA", ifelse(round(x, 2) == round(x), sprintf("%.0f", x), sprintf("%.2f", x)))
+
+x4 <- readRDS(file.path(project_root, "measure_outputs", "modul_6_actual_lsa_x4_title_subheading.rds"))$profiles |>
+  dplyr::mutate(model = dplyr::recode(as.character(model),
+    human = "Human", human_baseline = "Human", chatgpt_native = "ChatGPT",
+    gemini_native = "Gemini", claude_native = "Claude")) |>
+  dplyr::select(model, dplyr::starts_with("x4_")) |>
+  tidyr::pivot_longer(-model, names_to = "measure_id", values_to = "value")
+
+x6 <- readRDS(file.path(project_root, "measure_outputs", "modul_6_actual_lsa_x6_txts_lsa_sim_bundle.rds"))$whole_text_similarities |>
+  dplyr::filter(stringr::str_detect(comparison, regex("Human", TRUE))) |>
+  dplyr::mutate(model = dplyr::case_when(
+    stringr::str_detect(comparison, regex("ChatGPT", TRUE)) ~ "ChatGPT",
+    stringr::str_detect(comparison, regex("Gemini", TRUE)) ~ "Gemini",
+    stringr::str_detect(comparison, regex("Claude", TRUE)) ~ "Claude"
+  )) |>
+  dplyr::transmute(model, measure_id = "Target-txt-Human-txt-cos-sim", value = whole_text_similarity)
+
+m8_ic <- dplyr::bind_rows(x4, x6) |>
+  dplyr::left_join(tibble::tribble(
+    ~measure_id, ~indices, ~measure_type, ~measurement_level, ~ord,
+    "x4_sentence_title_similarity_mean", "Sentence–title cosine mean", "mean cosine similarity", "micro", 1L,
+    "x4_paragraph_title_similarity_mean", "Paragraph–title cosine mean", "mean cosine similarity", "meso", 2L,
+    "x4_text_title_similarity", "Whole-text–title cosine", "cosine similarity", "macro", 3L,
+    "x4_paragraph_subheading_similarity_mean", "Paragraph–subheading cosine mean", "section-balanced mean cosine similarity", "meso", 4L,
+    "Target-txt-Human-txt-cos-sim", "Target-txt-Human-txt-cos-sim", "complete target-text–Human-text cosine similarity", "macro", 5L
+  ), by = "measure_id") |>
+  dplyr::group_by(measure_id) |>
+dplyr::mutate(
+  human_reference = if (
+    dplyr::first(measure_id) ==
+      "Target-txt-Human-txt-cos-sim"
+  ) 1 else value[model == "Human"][1]
+) |>
+dplyr::ungroup() |>
+  dplyr::filter(model != "Human") |>
+  dplyr::mutate(
+    drift_h = human_reference - value,
+    model = factor(model, c("ChatGPT", "Gemini", "Claude"))
+  ) |>
+  dplyr::arrange(model, ord) |>
+  dplyr::group_by(model) |>
+  dplyr::mutate(`No.` = dplyr::row_number()) |>
+  dplyr::ungroup() |>
+  dplyr::transmute(
+    model, `No.`, `Indices bundle` = "Internal-consistency_proxy_indices",
+    Indices = indices, `Measure type` = measure_type,
+    `Measurement level` = measurement_level,
+    `Interpretative frame` = "cc_interface",
+    `driftₕ` = drift_h, `Human baseline` = human_reference
+  )
+
+stopifnot(nrow(m8_ic) == 15L, !anyNA(m8_ic$`Human baseline`), !anyNA(m8_ic$`driftₕ`))
+
+m8_ic |>
+  gt::gt(groupname_col = "model") |>
+  gt::tab_header(title = gt::md("**Internal-Consistency Proxy Indices CCP-Card**")) |>
+  gt::fmt(columns = c(`driftₕ`, `Human baseline`), fns = fmt_ccp) |>
+  gt::cols_align("center", gt::everything()) |>
+  gt::tab_style(gt::cell_text(weight = "bold"), list(gt::cells_column_labels(), gt::cells_row_groups())) |>
+  gt::tab_style(gt::cell_borders(sides = "all", color = "black"), list(gt::cells_column_labels(), gt::cells_row_groups(), gt::cells_body())) |>
+  gt::tab_options(
+    table.font.size = gt::px(9), data_row.padding = gt::px(2),
+    table.background.color = "white", heading.background.color = "white",
+    column_labels.background.color = "white", row_group.background.color = "white",
+    table.font.color = "black"
+  )
+```
+
+```{r}
+x5 <- readRDS(file.path(
+  project_root, "measure_outputs",
+  "modul_6_actual_lsa_x5_prompt_compliance_bundle.rds"
+))
+
+names(x5)
+str(x5, max.level = 2)
+```
+
+# SUMMARY 5 - CCP-CARD 5 — Prompt Compliance Indices CCP-Card
+
+```{r}
+# SUMMARY 5 - CCP-CARD 5 — Prompt Compliance Indices CCP-Card
+
+# SUMMARY 5 - CCP-CARD 5 — Prompt Compliance Indices CCP-Card
+
+x5 <- readRDS(file.path(project_root, "measure_outputs",
+  "modul_6_actual_lsa_x5_prompt_compliance_bundle.rds"))
+
+sw <- x5$diagnostics |>
+  dplyr::transmute(
+    model = dplyr::recode(as.character(text_id),
+      BASIC_CHATGPT_NATIVE_001 = "ChatGPT",
+      BASIC_CLAUDE_NATIVE_001 = "Claude"),
+    Indices = "Detected expected seed words",
+    type = "count",
+    drift_h = n_sw_expected - n_sw_detected,
+    baseline = as.character(n_sw_expected)
+  )
+
+sn <- x5$seed_word_net_similarities |>
+  rlang::set_names(c("comparison", "drift_h")) |>
+  dplyr::filter(stringr::str_detect(comparison, "Human")) |>
+  dplyr::transmute(
+    model = dplyr::case_when(
+      stringr::str_detect(comparison, "ChatGPT") ~ "ChatGPT",
+      stringr::str_detect(comparison, "Claude") ~ "Claude"
+    ),
+    Indices = "Seed-word-net similarity",
+    type = "cosine-similarity drift",
+    drift_h,
+    baseline = "–"
+  )
+
+x5_card <- dplyr::bind_rows(sw, sn) |>
+  dplyr::mutate(model = factor(model, c("ChatGPT", "Claude"))) |>
+  dplyr::arrange(model, factor(Indices, c(
+    "Detected expected seed words", "Seed-word-net similarity"
+  ))) |>
+  dplyr::mutate(`No.` = dplyr::row_number(), .by = model) |>
+  dplyr::transmute(
+    model, `No.`, `Indices bundle` = "prompt_complience_2", Indices,
+    `Measure type` = type, `Measurement level` = "macro",
+    `Interpretative frame` = "prompt compliance",
+    `driftₕ` = drift_h, `Human baseline` = baseline, type
+  )
+
+x5_card |>
+  gt::gt(groupname_col = "model") |>
+  gt::tab_header(
+    title = gt::md("**Prompt Compliance Indices CCP-Card**"),
+    subtitle = "$drift_h = Human - LM$"
+  ) |>
+  gt::fmt_number(`driftₕ`, decimals = 2) |>
+  gt::fmt_integer(`driftₕ`, rows = type == "count", use_seps = FALSE) |>
+  gt::cols_hide(type) |>
+  gt::cols_align("center", gt::everything()) |>
+  gt::tab_style(gt::cell_text(weight = "bold"),
+    list(gt::cells_column_labels(), gt::cells_row_groups())) |>
+  gt::tab_style(gt::cell_borders(sides = "all", color = "black"),
+    list(gt::cells_column_labels(), gt::cells_row_groups(), gt::cells_body())) |>
+  gt::tab_options(
+    table.font.size = gt::px(9), data_row.padding = gt::px(2),
+    table.background.color = "white", heading.background.color = "white",
+    column_labels.background.color = "white",
+    row_group.background.color = "white", table.font.color = "black"
+  )
+```
+
+# temporary inspection
+```{r}
+x5 <- readRDS(file.path(
+  project_root, "measure_outputs",
+  "modul_6_actual_lsa_x5_prompt_compliance_bundle.rds"
+))
+
+x5$seed_word_net_similarities
+str(x5$seed_word_net_similarities)
+```
+
+# MODUL 8.19 — Render the frozen x2 distributional-plausibility architecture
 
 ```{r}
 # MODUL 8.19 — Render the frozen x2 distributional-plausibility architecture
@@ -2397,20 +2954,20 @@ digraph G {
 }
 ")
 ```
+
 # Note: MODUL 7.2 — Analytical scope
 
-MODUL 7 evaluates the corpus-based statistical (distributional) plausibility of approved (present in corpus) multiword combinations/sequences extracted from the Human, ChatGPT, and Claude texts. `BASIC_GEMINI_NATIVE_001` is excluded because its Markdown contamination produced systematically unreliable token, POS, and dependency annotation. The aim was to gain insight into the overall MI (PMI) structure of each target text. 
+MODUL 7 evaluates the corpus-based statistical (distributional) plausibility of approved (present in corpus) multiword combinations/sequences extracted from the Human, ChatGPT, and Claude texts. `BASIC_GEMINI_NATIVE_001` is excluded because its Markdown contamination produced systematically unreliable token, POS, and dependency annotation. The aim was to gain insight into the overall MI (PMI) structure of each target text.
 
-The application of the "functor" (unsaturated elements, that license semantic slots and call for their closure, as the conceptualized middle of a functor-argument relations is taken from Reinöhl & Ellison 2024 (795,797,800) (Reinöhl, Uta, and T. Mark Ellison. 2024. “Metaphor Forces Argument Overtness.” Linguistics 62(4): 795–847. https://doi.org/10.1515/ling-2021-0072). 
+The application of the "functor" (unsaturated elements, that license semantic slots and call for their closure, as the conceptualized middle of a functor-argument relations is taken from Reinöhl & Ellison 2024 (795,797,800) (Reinöhl, Uta, and T. Mark Ellison. 2024. “Metaphor Forces Argument Overtness.” Linguistics 62(4): 795–847. https://doi.org/10.1515/ling-2021-0072).
 
-The x2a indices bundle represents parser-restricted functor-formulated frames that have root status. `x2a1_nominal` pairs the verbal functor with an approved preverbal nominal candidate, while `x2a2_predicative` pairs it with a parser-identified nominal object. The x2b and x2c  indices bundles represent exact ordered two- or three-token lemma sequences - that are motivated by the sentence lengths and sstructure (type of connector). Titles and subheadings are excluded.
+The x2a indices bundle represents parser-restricted functor-formulated frames that have root status. `x2a1_nominal` pairs the verbal functor with an approved preverbal nominal candidate, while `x2a2_predicative` pairs it with a parser-identified nominal object. The x2b and x2c indices bundles represent exact ordered two- or three-token lemma sequences - that are motivated by the sentence lengths and sstructure (type of connector). Titles and subheadings are excluded.
 
 (P)MI was obtained from the fixed DeReKo reference corpus using token-based queries; inflectional variants were therefore not grouped under shared lemmas. The values represent the corpus association of the queried token pair or exact two- or three-token sequence and were thus derived at the clause-level. The distributional, statistical plausibility of the whole text was subsequently reconstructed by averaging these clause-level (P)MI values.
 
-Procedure:
-In MODUL 7, the distributional plausibility of the word combinations occurring in the three target texts is examined on the basis of a human-authored reference corpus. (BASIC_GEMINI_NATIVE_001 is excluded from MODUL 7 because Markdown-related contamination produced systematically unreliable token, POS, and dependency annotation. Gemini is retained only in the exclusion audit and does not enter candidate extraction, corpus querying, PMI calculation, aggregation, or final reporting.) For this purpose, all candidates are first preserved with their token and lemma forms as well as their unambiguous assignment to text_id, sentence, and original token position. In simple main clauses and in the respective root area of more complex sentences, the areas pre_f = nominal candidates, functor = VERB, and post_f = predicative candidates are distinguished for x2a1 and x2a2: In the sentence “Menschen entwickeln neue Fähigkeiten,” for example, Menschen ↔ entwickeln can be examined as a connection between pre_f = nominal candidates and functor, and entwickeln ↔ Fähigkeiten as a connection between functor and post_f = predicative candidates. Subordinate clauses and coordinated continuations, by contrast, are not analysed again through this functor logic, but are divided from a recognized SCONJ or CCONJ onwards into directly consecutive sliding windows: From “weil Menschen neue Fähigkeiten entwickeln,” for example, the lemma windows weil mensch neu, mensch neu fähigkeit, neu fähigkeit entwickeln, and finally fähigkeit entwickeln are created. Titles and subheadings are fully excluded. In the subsequent DeReKo pilot, lemma and token queries are tested in parallel; the lemma level will probably serve as the primary PMI query, while the token level is preserved as a control, diagnostic, or fallback representation. \# Caveat: It must be explicitly noted that a lemma-based query groups different inflectional forms under one lemma; therefore, the concrete inflectional structure of the word combination realized in the target text cannot be tested for plausibility.
+Procedure: In MODUL 7, the distributional plausibility of the word combinations occurring in the three target texts is examined on the basis of a human-authored reference corpus. (BASIC_GEMINI_NATIVE_001 is excluded from MODUL 7 because Markdown-related contamination produced systematically unreliable token, POS, and dependency annotation. Gemini is retained only in the exclusion audit and does not enter candidate extraction, corpus querying, PMI calculation, aggregation, or final reporting.) For this purpose, all candidates are first preserved with their token and lemma forms as well as their unambiguous assignment to text_id, sentence, and original token position. In simple main clauses and in the respective root area of more complex sentences, the areas pre_f = nominal candidates, functor = VERB, and post_f = predicative candidates are distinguished for x2a1 and x2a2: In the sentence “Menschen entwickeln neue Fähigkeiten,” for example, Menschen ↔ entwickeln can be examined as a connection between pre_f = nominal candidates and functor, and entwickeln ↔ Fähigkeiten as a connection between functor and post_f = predicative candidates. Subordinate clauses and coordinated continuations, by contrast, are not analysed again through this functor logic, but are divided from a recognized SCONJ or CCONJ onwards into directly consecutive sliding windows: From “weil Menschen neue Fähigkeiten entwickeln,” for example, the lemma windows weil mensch neu, mensch neu fähigkeit, neu fähigkeit entwickeln, and finally fähigkeit entwickeln are created. Titles and subheadings are fully excluded. In the subsequent DeReKo pilot, lemma and token queries are tested in parallel; the lemma level will probably serve as the primary PMI query, while the token level is preserved as a control, diagnostic, or fallback representation. \# Caveat: It must be explicitly noted that a lemma-based query groups different inflectional forms under one lemma; therefore, the concrete inflectional structure of the word combination realized in the target text cannot be tested for plausibility.
 
-* Note about the Corpus: Institut für Deutsche Sprache (2026): Deutsches Referenzkorpus DeReKo / Archiv der Korpora geschriebener Gegenwartssprache. Mannheim: Leibniz-Institut für Deutsche Sprache. Online verfügbar unter: https://ids-mannheim.de.
+-   Note about the Corpus: Institut für Deutsche Sprache (2026): Deutsches Referenzkorpus DeReKo / Archiv der Korpora geschriebener Gegenwartssprache. Mannheim: Leibniz-Institut für Deutsche Sprache. Online verfügbar unter: https://ids-mannheim.de.
 
 Für das DeReKo-Korpus:Kupietz, M., Belica, H., Keibel, H., & Witt, A. (2010). The German Reference Corpus DeReKo: A primordial corpus for linguistic research. In Proceedings of the 7th International Conference on Language Resources and Evaluation (LREC 2010) (pp. 1848–1854). Valletta, Malta: European Language Resources Association (ELRA) \[1.2\].Für die KorAP-Infrastruktur:Bański, P., Diewald, N., Hanl, M., Kupietz, M., & Witt, A. (2014). Accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 14th Conference of the European Chapter of the Association for Computational Linguistics (EACL 2014) — Software Demonstrations (pp. 5–8). Gothenburg, Sweden: Association for Computational Linguistics \[1.2\].Für das R-Package:Kupietz, M., Margaretha, E., & Diewald, N. (2020). RKorAPClient: An R package for accessing the German Reference Corpus DeReKo via KorAP. In Proceedings of the 12th International Conference on Language Resources and Evaluation (LREC 2020) (pp. 7017–7023). Marseille, France: European Language Resources Association (ELRA) \[1.2\].
 
@@ -2563,15 +3120,13 @@ readRDS(file.path(
   )
 ```
 
-# # Note: Pointwise mutual information measures the corpus-based contingency of a queried token combination relative to the occurrence expected from the marginal frequencies of its constituent tokens. A value of 0 indicates occurrence at the expected rate, whereas positive values indicate increasingly greater-than-expected association; because PMI is logarithmic and has no fixed upper bound, high values are mathematically possiblePMI3 values are not interpreted on the same numerical scale as PMI2. Comparisons are undertaken only within the same branch and token length; for example, x2b PMI3 across texts, never x2b PMI3 against x2b PMI2 or x2a PMI2. rare and singleton combinations can yield particularly high and less stable estimates. In accordance with the distinction between phrasal frequency and statistical contingency discussed by Yi (2021), PMI is interpreted here as an association measure rather than as raw recurrence or complete formulaicity.PMI2 and PMI3 quantify differently defined co-occurrences of mwCombos (multi word combinations): a two-token sequence and an exact three-token sequence, respectively. These mwCombos are token-based query units that retain the inflectional forms realized in the target texts and should not be equated with MWS, which tend to be more formulaic and are often analysed on a scale of lemmatization. Therefore, PMI2 and PMI3 values are not directly comparable. It should not be concluded that a PMI3 value of 8 indicates a stronger association than a PMI2 value of 4.
+# \# Note: Pointwise mutual information measures the corpus-based contingency of a queried token combination relative to the occurrence expected from the marginal frequencies of its constituent tokens. A value of 0 indicates occurrence at the expected rate, whereas positive values indicate increasingly greater-than-expected association; because PMI is logarithmic and has no fixed upper bound, high values are mathematically possiblePMI3 values are not interpreted on the same numerical scale as PMI2. Comparisons are undertaken only within the same branch and token length; for example, x2b PMI3 across texts, never x2b PMI3 against x2b PMI2 or x2a PMI2. rare and singleton combinations can yield particularly high and less stable estimates. In accordance with the distinction between phrasal frequency and statistical contingency discussed by Yi (2021), PMI is interpreted here as an association measure rather than as raw recurrence or complete formulaicity.PMI2 and PMI3 quantify differently defined co-occurrences of mwCombos (multi word combinations): a two-token sequence and an exact three-token sequence, respectively. These mwCombos are token-based query units that retain the inflectional forms realized in the target texts and should not be equated with MWS, which tend to be more formulaic and are often analysed on a scale of lemmatization. Therefore, PMI2 and PMI3 values are not directly comparable. It should not be concluded that a PMI3 value of 8 indicates a stronger association than a PMI2 value of 4.
 
-* n_pmi: how many valid PMI values entered the calculation.
-mean_pmi: the arithmetic average of those PMI values.
-median_pmi: the middle PMI value after sorting them.
+-   n_pmi: how many valid PMI values entered the calculation. mean_pmi: the arithmetic average of those PMI values. median_pmi: the middle PMI value after sorting them.
 
-** The individual PMI values are first obtained at the clause level for each approved mwCombo: x2a captures parser-based functor–nominal and functor–predicate relations in the main-clause/root region, whereas x2b and x2c capture exact two- or three-token windows, including connector-based combinations. These individual values are then averaged across the whole text separately for each index in the indices bundles, so the reported mean and median PMI are text-level summaries rather than single sentence- or window-level values. Comparisons are therefore made only within the same index and token length, while the indices bundles together reconstruct the text’s overall distributional plausibility from these clause-level associations.
+\*\* The individual PMI values are first obtained at the clause level for each approved mwCombo: x2a captures parser-based functor–nominal and functor–predicate relations in the main-clause/root region, whereas x2b and x2c capture exact two- or three-token windows, including connector-based combinations. These individual values are then averaged across the whole text separately for each index in the indices bundles, so the reported mean and median PMI are text-level summaries rather than single sentence- or window-level values. Comparisons are therefore made only within the same index and token length, while the indices bundles together reconstruct the text’s overall distributional plausibility from these clause-level associations.
 
-**! The x2b index applies PMI to exact consecutive two- and three-token mwCombos extracted by a sliding-window procedure. The sliding window defines the local candidate units, while PMI quantifies the corpus-based contingency of each complete combination. This complements the parser-based x2a indices by capturing sequential associations that are not restricted to predefined functor relations.
+\*\*! The x2b index applies PMI to exact consecutive two- and three-token mwCombos extracted by a sliding-window procedure. The sliding window defines the local candidate units, while PMI quantifies the corpus-based contingency of each complete combination. This complements the parser-based x2a indices by capturing sequential associations that are not restricted to predefined functor relations.
 
 # MODUL 8.21 — Display a reproducible random sample of 10 valid mwCombos
 
@@ -2636,9 +3191,8 @@ readRDS(file.path(
   )
 ```
 
-
-
 # Note: the x2 distributional/statistical-plausibility drift profiles.
+
 For each text, drift₀ describes its position relative to the human-authored DeReKo reference corpus. Corpus frequency and PMI are retained as separate components: mean corpus frequency indicates how frequently the queried combinations occur in DeReKo, while mean PMI indicates their association strength relative to the DeReKo marginals. The functor-based dimension is represented as functor-based PMI Σ, calculated from the separately averaged x2a1 and x2a2 values. For the sliding-window dimensions, only three-token PMI3 windows are included; final two-token residual windows are retained descriptively but excluded from the drift calculus.
 
 driftₕ expresses the dimension-by-dimension difference between the Human reference text and each LM:
@@ -2738,7 +3292,100 @@ x2 |>
 ```
 
 
-# # MODUL 8.23 — Display sentence-length and neurolinguistical indices
+# SUMMARY 6 - 
+
+```{r}
+# SUMMARY 6 - CCP-CARD 6 — x2 Distributional/Statistical-Plausibility Indices CCP-Card
+
+# SUMMARY 6 - CCP-CARD 6 — x2 Distributional/Statistical-Plausibility Indices CCP-Card
+
+x2 <- readRDS(file.path(project_root, "measure_outputs",
+  "modul_7_x2_distributional_plausibility_bundle.rds"))$mwCombo_by_text |>
+  dplyr::filter(query_status == "ok", is.finite(corpus_frequency),
+                is.finite(corpus_pmi),
+                candidate_type %in% c("x2a1_nominal", "x2a2_predicative") |
+                  token_n_in_w == 3L) |>
+  dplyr::summarise(F = mean(corpus_frequency), PMI = mean(corpus_pmi),
+                   .by = c(text_id, candidate_type))
+
+p <- dplyr::bind_rows(
+  x2 |> dplyr::filter(stringr::str_starts(candidate_type, "x2a")) |>
+    dplyr::summarise(F = sum(F), PMI = sum(PMI), .by = text_id) |>
+    dplyr::mutate(Dimension = "x2a functor-based PMI Σ"),
+  x2 |> dplyr::filter(!stringr::str_starts(candidate_type, "x2a")) |>
+    dplyr::mutate(Dimension = dplyr::recode(candidate_type,
+      x2b = "x2b +2_sliding_cxw_PMI",
+      x2c1_subc_sw = "x2c1 SCONJ sequence",
+      x2c2_cor_sw = "x2c2 CCONJ sequence"))
+) |>
+  dplyr::mutate(model = dplyr::recode(text_id,
+    HUMAN_BASELINE_001 = "Human", BASIC_CHATGPT_NATIVE_001 = "ChatGPT",
+    BASIC_CLAUDE_NATIVE_001 = "Claude"))
+
+h <- p |> dplyr::filter(model == "Human") |>
+  dplyr::select(Dimension, Human_F = F, Human_PMI = PMI)
+
+x2_card <- p |> dplyr::filter(model != "Human") |>
+  dplyr::left_join(h, by = "Dimension") |>
+  tidyr::pivot_longer(c(F, PMI), names_to = "kind", values_to = "value") |>
+  dplyr::mutate(
+    baseline = dplyr::if_else(kind == "F", Human_F, Human_PMI),
+    drift_h = baseline - value,
+    model = factor(model, c("ChatGPT", "Claude")),
+    Indices = paste(Dimension, dplyr::recode(kind,
+      F = "mean corpus frequency", PMI = "mean corpus PMI"))
+  ) |>
+  dplyr::arrange(model, Dimension, kind) |>
+  dplyr::mutate(`No.` = dplyr::row_number(), .by = model) |>
+  dplyr::transmute(
+    model, `No.`,
+    `Indices bundle` = "x2 distributional/statistical_pmi-based-plausibility",
+    Indices,
+    `Measure type` = dplyr::recode(kind,
+      F = "mean corpus frequency", PMI = "mean PMI"),
+    `Measurement level` = "macro",
+    `Interpretative frame` = "distributional plausibility",
+    `driftₕ` = drift_h, `Human baseline` = baseline, kind
+  )
+
+x2_card |>
+  gt::gt(groupname_col = "model") |>
+  gt::tab_header(
+    title = gt::md("**x2 Distributional/Statistical-Plausibility Indices CCP-Card**"),
+    subtitle = "$drift_h = Human - LM$"
+  ) |>
+  gt::fmt_number(c(`driftₕ`, `Human baseline`), decimals = 2,
+                 rows = kind == "F") |>
+  gt::fmt_integer(c(`driftₕ`, `Human baseline`), rows = kind == "PMI") |>
+  gt::cols_hide(kind) |>
+  gt::cols_align("center", gt::everything()) |>
+  gt::tab_style(gt::cell_text(weight = "bold"),
+    list(gt::cells_column_labels(), gt::cells_row_groups())) |>
+  gt::tab_style(gt::cell_borders(sides = "all", color = "black"),
+    list(gt::cells_column_labels(), gt::cells_row_groups(), gt::cells_body())) |>
+  gt::tab_options(
+    table.font.size = gt::px(9), data_row.padding = gt::px(2),
+    table.background.color = "white", heading.background.color = "white",
+    column_labels.background.color = "white",
+    row_group.background.color = "white", table.font.color = "black"
+  )
+```
+
+# Note: A positive PMI drift means the Human profile contains more strongly associated word combinations than the LM profile in that dimension. A negative PMI drift means the LM combinations are more strongly associated.
+
+# temporary inspection
+
+```{r}
+x2_bundle$query_results |>
+  dplyr::filter(query_status == "ok") |>
+  dplyr::summarise(
+    n_values = dplyr::n_distinct(corpus_total_N),
+    min_N = min(corpus_total_N, na.rm = TRUE),
+    max_N = max(corpus_total_N, na.rm = TRUE)
+  )
+``` 
+
+# MODUL 8.23 — Display sentence-length and neurolinguistical indices
 
 ```{r}
 # MODUL 8.23 — Display sentence-length and neurolinguistical indices
@@ -2852,25 +3499,69 @@ dplyr::left_join(
   )
 ```
 
-# Note: # ================ MODULE-INDEPENDENT Neurolinguistical_diagnostics realted Measures (inspired by Voleti, Liss and Berisha 2021)
+# Note: \# ================ MODULE-INDEPENDENT Neurolinguistical_diagnostics realted Measures (inspired by Voleti, Liss and Berisha 2021)
 
-Voleti, Rohit, Julie M. Liss, and Visar Berisha. 2021. “A Review of Automated Speech and Language Features for Assessment of Cognitive and Thought Disorders.” IEEE Journal of Selected Topics in Signal Processing 14(2): 282–298. https://doi.org/10.1109/jstsp.2019.2952087.
-Measures like the following have proven inicative when it comes do diagnosis and classification of neurological thought disorder, as these "affect te ability of an individual to form complex thoughts and sentence structure, and might often have issues such as poverty of speech or disorganized speech(Voleti, Liss and Berisha 2021: 5). Therefore, the authors looked at methods that would allow insight into 'thought' content density, complexity of sentence syntax, semantic coherence, and sentiment analysis as research shows them to be relevant for these conditions. They distinguish between lexeme-level information, sentence-level informatin and finally semantics.
+Voleti, Rohit, Julie M. Liss, and Visar Berisha. 2021. “A Review of Automated Speech and Language Features for Assessment of Cognitive and Thought Disorders.” IEEE Journal of Selected Topics in Signal Processing 14(2): 282–298. https://doi.org/10.1109/jstsp.2019.2952087. Measures like the following have proven inicative when it comes do diagnosis and classification of neurological thought disorder, as these "affect te ability of an individual to form complex thoughts and sentence structure, and might often have issues such as poverty of speech or disorganized speech(Voleti, Liss and Berisha 2021: 5). Therefore, the authors looked at methods that would allow insight into 'thought' content density, complexity of sentence syntax, semantic coherence, and sentiment analysis as research shows them to be relevant for these conditions. They distinguish between lexeme-level information, sentence-level informatin and finally semantics.
 
-- Lexical diversity: measured by TTR and Brunét’s index.
-- Lexical density: measured by content density (CD).
-- verb_rate: proportion of verbs among all word tokens;
-- adjective_rate: proportion of adjectives among all word tokens,
-- n_hapax is a technical count required for Honoré’s statistic. Higher Honoré’s statistic generally indicates greater lexical diversity.
+-   Lexical diversity: measured by TTR and Brunét’s index.
 
-* # Note : TTR and Brunét’s index measure lexical diversity, that is, the degree of variation in the vocabulary used in a text. Content density measures the proportion of lexical content words—verbs, nouns, proper nouns, adjectives, and adverbs—among all word tokens. Lexical diversity and lexical density therefore describe different properties and must not be treated as interchangeable.
+-   Lexical density: measured by content density (CD).
 
-#
+-   verb_rate: proportion of verbs among all word tokens;
+
+-   adjective_rate: proportion of adjectives among all word tokens,
+
+-   n_hapax is a technical count required for Honoré’s statistic. Higher Honoré’s statistic generally indicates greater lexical diversity.
+
+-   
+
+    # Note : TTR and Brunét’s index measure lexical diversity, that is, the degree of variation in the vocabulary used in a text. Content density measures the proportion of lexical content words—verbs, nouns, proper nouns, adjectives, and adverbs—among all word tokens. Lexical diversity and lexical density therefore describe different properties and must not be treated as interchangeable.
+
+# \# MODUL 8.24 — Human-referenced driftₕ for neurolinguistical indices
 
 ```{r}
-1 + 1
-```
+p_long <- p |>
+  tidyr::pivot_longer(
+    -text_label,
+    names_to = "Index",
+    values_to = "Value"
+  )
 
+human_ref <- p_long |>
+  dplyr::filter(text_label == "Human") |>
+  dplyr::select(Index, `Human reference` = Value)
+
+p_long |>
+  dplyr::filter(text_label != "Human") |>
+  dplyr::left_join(human_ref, by = "Index") |>
+  dplyr::transmute(
+    `Target text` = text_label,
+    Index = dplyr::recode(
+      Index,
+      sentence_length_words_mean = "Mean sentence length",
+      token_length_letters_mean = "Mean token length",
+      ttr = "Lexical diversity: TTR",
+      brunet_index = "Lexical diversity: Brunet",
+      honore_statistic = "Lexical diversity: Honoré",
+      content_density = "Lexical density",
+      verb_rate = "Verb rate",
+      adj_rate = "Adjective rate"
+    ),
+    `Human reference`,
+    `driftₕ` = `Human reference` - Value
+  ) |>
+  gt::gt(groupname_col = "Target text") |>
+  gt::tab_header(
+    title = gt::md(
+      "**Human-referenced driftₕ: neurolinguistical indices**"
+    ),
+    subtitle = "driftₕ(LM, j) = Human(j) − LM(j)"
+  ) |>
+  gt::fmt_number(
+    columns = c(`Human reference`, `driftₕ`),
+    decimals = 2
+  )
+```
 
 # 
 
@@ -2878,6 +3569,11 @@ Measures like the following have proven inicative when it comes do diagnosis and
 1 + 1
 ```
 
+# 
+
+```{r}
+1 + 1
+```
 
 # 
 
@@ -2885,22 +3581,11 @@ Measures like the following have proven inicative when it comes do diagnosis and
 1 + 1
 ```
 
-
 # 
 
 ```{r}
 1 + 1
 ```
-
-
-# 
-
-```{r}
-1 + 1
-```
-
-
-
 
 ```{r}
 #| echo: false
